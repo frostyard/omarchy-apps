@@ -6,7 +6,7 @@
 # granted via postinst setcap, dpkg does not preserve file capabilities.
 APP_DESC="Screen recorder with GPU-accelerated VAAPI/NVENC encoding"
 APP_EXTRA_DEPENDS="libcap2-bin"
-APP_SMOKE="gpu-screen-recorder --version || gpu-screen-recorder --help"
+APP_SMOKE="test -x /usr/bin/gpu-screen-recorder && test -x /usr/bin/gsr-kms-server && getcap /usr/bin/gsr-kms-server"
 app_deps() {
     apt-get install --no-install-recommends --yes \
         meson ninja-build pkg-config \
