@@ -1,0 +1,130 @@
+name: Check Upstream Versions
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Weekly on Monday 8am UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check for upstream updates
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CHECKSUMS="download/checksums.json"
+          UPDATES=""
+
+          gh_api() {
+            curl -fsSL --retry 3 --retry-delay 2 \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$1" || true
+          }
+
+          ver_gt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ]; }
+
+          # app -> github repo whose tags define the version. Tarball URL is
+          # rewritten from the pinned URL by version substitution, so every
+          # entry's URL shape must contain the literal version.
+          declare -A REPOS=(
+            [ttfx]=omacom-io/ttfx
+            [herdr]=omacom-io/herdr
+            [tensaku]=jondkinney/tensaku
+            [cliamp]=bjarneo/cliamp
+            [aether]=bjarneo/aether
+            [voxtype]=peteonrails/voxtype
+            [omacalc]=omacom-io/omacalc
+            [omacut]=omacom-io/omacut
+            [omawrite]=omacom-io/omawrite
+            [moonlight-qt]=moonlight-stream/moonlight-qt
+          )
+
+          for app in "${!REPOS[@]}"; do
+            CURRENT=$(jq -r --arg a "$app" '.[$a].version' "$CHECKSUMS")
+            LATEST=$(gh_api "https://api.github.com/repos/${REPOS[$app]}/tags?per_page=30" |
+              jq -r '.[].name | select(test("^v?[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sed 's/^v//' | sort -V | tail -n1)
+            if [[ -n "$LATEST" && "$LATEST" != "null" ]] && ver_gt "$LATEST" "$CURRENT"; then
+              OLD_URL=$(jq -r --arg a "$app" '.[$a].url' "$CHECKSUMS")
+              NEW_URL="${OLD_URL//$CURRENT/$LATEST}"
+              TMP=$(mktemp)
+              if curl -fsSL --retry 3 --max-time 300 -o "$TMP" "$NEW_URL"; then
+                SHA=$(sha256sum "$TMP" | cut -d' ' -f1)
+                jq --arg a "$app" --arg u "$NEW_URL" --arg s "$SHA" --arg v "$LATEST" \
+                  '.[$a].url=$u | .[$a].sha256=$s | .[$a].version=$v' \
+                  "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
+                UPDATES="${UPDATES}${app}: $CURRENT -> $LATEST\n"
+              else
+                echo "::warning::$app: $LATEST tagged but $NEW_URL not fetchable; skipping"
+              fi
+              rm -f "$TMP"
+            fi
+          done
+
+          # Git-pinned apps (no usable tarball -- see checksums.json comments):
+          # resolve the newest release tag and its commit via ls-remote.
+          CURRENT_HPSP=$(jq -r '.["hyprland-preview-share-picker"].version' "$CHECKSUMS")
+          HPSP_URL=$(jq -r '.["hyprland-preview-share-picker"].git' "$CHECKSUMS")
+          LATEST_HPSP=$(git ls-remote --tags "$HPSP_URL" 2>/dev/null |
+            sed -n 's|.*refs/tags/v\([0-9][0-9.]*\)$|\1|p' | sort -V | tail -n1)
+          if [[ -n "$LATEST_HPSP" ]] && ver_gt "$LATEST_HPSP" "$CURRENT_HPSP"; then
+            HPSP_COMMIT=$(git ls-remote --tags "$HPSP_URL" "refs/tags/v$LATEST_HPSP" | cut -f1)
+            jq --arg t "v$LATEST_HPSP" --arg v "$LATEST_HPSP" --arg c "$HPSP_COMMIT" \
+              '.["hyprland-preview-share-picker"].tag=$t | .["hyprland-preview-share-picker"].version=$v | .["hyprland-preview-share-picker"].commit=$c' \
+              "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
+            UPDATES="${UPDATES}hyprland-preview-share-picker: $CURRENT_HPSP -> $LATEST_HPSP\n"
+          fi
+
+          CURRENT_GSR=$(jq -r '.["gpu-screen-recorder"].version' "$CHECKSUMS")
+          GSR_URL=$(jq -r '.["gpu-screen-recorder"].git' "$CHECKSUMS")
+          LATEST_GSR=$(git ls-remote --tags "$GSR_URL" 2>/dev/null |
+            sed -n 's|.*refs/tags/\([0-9][0-9.]*\)$|\1|p' | sort -V | tail -n1)
+          if [[ -n "$LATEST_GSR" ]] && ver_gt "$LATEST_GSR" "$CURRENT_GSR"; then
+            GSR_COMMIT=$(git ls-remote --tags "$GSR_URL" "refs/tags/$LATEST_GSR" | cut -f1)
+            jq --arg t "$LATEST_GSR" --arg c "$GSR_COMMIT" \
+              '.["gpu-screen-recorder"].tag=$t | .["gpu-screen-recorder"].version=$t | .["gpu-screen-recorder"].commit=$c' \
+              "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
+            UPDATES="${UPDATES}gpu-screen-recorder: $CURRENT_GSR -> $LATEST_GSR\n"
+          fi
+
+          if [[ -n "$UPDATES" ]]; then
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "updates<<EOF"
+              echo -e "$UPDATES"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: steps.check.outputs.has_updates == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update pinned upstream versions"
+          title: "chore: update pinned upstream versions"
+          body: |
+            Automated upstream version bump:
+
+            ```
+            ${{ steps.check.outputs.updates }}
+            ```
+
+            CI builds every package from the new pins; merge only when the
+            full matrix is green.
+          branch: update-upstream-versions
+          delete-branch: true

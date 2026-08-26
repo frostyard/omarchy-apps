@@ -1,0 +1,72 @@
+{
+  "ttfx": {
+    "url": "https://github.com/omacom-io/ttfx/archive/refs/tags/v0.3.2.tar.gz",
+    "sha256": "d0c0df4867e7f03142fb7f77c66670d0e8da15534239c1a7abfd89f19dfc00f6",
+    "version": "0.3.2"
+  },
+  "herdr": {
+    "url": "https://github.com/omacom-io/herdr/archive/refs/tags/v0.8.0.tar.gz",
+    "sha256": "47bdb0753beb8a6b157cf2fec26fbe6b787f85ffea0dde579b0001d6cd663572",
+    "version": "0.8.0"
+  },
+  "tensaku": {
+    "url": "https://github.com/jondkinney/tensaku/archive/refs/tags/v0.28.0.tar.gz",
+    "sha256": "08f61dce1a4b629a1229c0b2cead642e165319e4b61a6f605fc3568d9f6183ee",
+    "version": "0.28.0"
+  },
+  "hyprland-preview-share-picker": {
+    "git": "https://github.com/WhySoBad/hyprland-preview-share-picker",
+    "tag": "v0.2.1",
+    "commit": "211b7890ed3332f4d1bb1f1a96999e18874a9c3c",
+    "version": "0.2.1",
+    "comment": "git pin: the release tarball omits the lib/hyprland-protocols submodule and build.rs needs git describe; the commit hash is the content pin (submodules pinned transitively via gitlinks)."
+  },
+  "cliamp": {
+    "url": "https://github.com/bjarneo/cliamp/archive/refs/tags/v1.63.2.tar.gz",
+    "sha256": "968ff98c1e49bae8a0ce63acf5c77a9621ef70756a048e3df5e79454b82a9eef",
+    "version": "1.63.2"
+  },
+  "aether": {
+    "url": "https://github.com/bjarneo/aether/archive/refs/tags/v4.29.4.tar.gz",
+    "sha256": "ec46d524b9e562ead07ad0b6e85f5d16cc0c31e21cf5266d771dab95ef245d4e",
+    "version": "4.29.4"
+  },
+  "omacalc": {
+    "url": "https://github.com/omacom-io/omacalc/archive/refs/tags/v0.2.2.tar.gz",
+    "sha256": "a42b39cd5a62c83f6667060da19c9bcc5dd8469ce69e48f19394b71322b9cba4",
+    "version": "0.2.2"
+  },
+  "omacut": {
+    "url": "https://github.com/omacom-io/omacut/archive/refs/tags/v0.4.0.tar.gz",
+    "sha256": "0e1b0665e0304a1ecbdb06b8574e8abf385e1cffa431821032902340c2c5d7df",
+    "version": "0.4.0"
+  },
+  "omawrite": {
+    "url": "https://github.com/omacom-io/omawrite/archive/refs/tags/v0.5.0.tar.gz",
+    "sha256": "b57e418212f9bde0b8a12cff2424a43f15829a56a58fdc49542a0393a430f938",
+    "version": "0.5.0"
+  },
+  "voxtype": {
+    "url": "https://github.com/peteonrails/voxtype/releases/download/v0.7.5/voxtype-0.7.5-linux-x86_64-avx2",
+    "sha256": "18ae0510d0c964689f8c9b7119c0b9a45569985e82977dc4f1ef4d76fddd887c",
+    "version": "0.7.5"
+  },
+  "gpu-screen-recorder": {
+    "git": "https://repo.dec05eba.com/gpu-screen-recorder",
+    "tag": "6.0.1",
+    "commit": "8c33f61c75af723f55c2c235d6807686579fe157",
+    "version": "6.0.1",
+    "comment": "git pin: the cgit web host (git.dec05eba.com) sits behind an Anubis bot-check wall so no fetchable tarball exists; the smart-HTTP git endpoint is open. The commit hash IS the content pin -- build.sh clones the tag shallowly and hard-fails unless HEAD matches."
+  },
+  "zig": {
+    "url": "https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz",
+    "sha256": "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239",
+    "version": "0.15.2",
+    "comment": "build tool for herdr's vendored libghostty-vt (minimum_zig_version 0.15.2); not a published package"
+  },
+  "moonlight-qt": {
+    "url": "https://github.com/moonlight-stream/moonlight-qt/releases/download/v6.1.0/Moonlight-6.1.0-x86_64.AppImage",
+    "sha256": "0e855ffd22d407e18ab5fdb575fed5f01ca119a3f91993c5f0213f15ac80b400",
+    "version": "6.1.0"
+  }
+}

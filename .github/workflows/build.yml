@@ -1,0 +1,98 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+    env:
+      HOME: "/root"
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - ttfx
+          - herdr
+          - tensaku
+          - hyprland-preview-share-picker
+          - cliamp
+          - aether
+          - voxtype
+          - omacalc
+          - omacut
+          - omawrite
+          - gpu-screen-recorder
+          - moonlight-qt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build package
+        run: bash build.sh "${{ matrix.app }}"
+
+      - name: Verify package installs and runs
+        run: |
+          apt-get update
+          apt-get install --yes ./dist/*.deb
+          smoke=$(bash -c 'source apps/"${{ matrix.app }}".sh >/dev/null 2>&1 || true; echo "$APP_SMOKE"')
+          echo "smoke: $smoke"
+          bash -c "$smoke"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.app }}
+          path: dist/*.deb
+
+  release:
+    name: Publish to repository
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          merge-multiple: true
+          path: ./dist
+
+      - name: Publish to frostyard repo
+        uses: frostyard/repogen/.github/actions/publish-to-r2@main
+        with:
+          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
+          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          r2-bucket: frostyardrepo
+          purge-cache: "true"
+          cloudflare-zone: ${{ secrets.CLOUDFLARE_ZONE }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          gpg-private-key: ${{ secrets.REPOGEN_GPG_KEY }}
+          packages-dir: ./dist
+          package-type: deb
+          base-url: https://repository.frostyard.org
