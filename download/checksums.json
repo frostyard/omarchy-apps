@@ -1,8 +1,8 @@
 {
   "ttfx": {
-    "url": "https://github.com/omacom-io/ttfx/archive/refs/tags/v0.3.2.tar.gz",
-    "sha256": "d0c0df4867e7f03142fb7f77c66670d0e8da15534239c1a7abfd89f19dfc00f6",
-    "version": "0.3.2"
+    "url": "https://github.com/omacom-io/ttfx/archive/refs/tags/v0.5.0.tar.gz",
+    "sha256": "2882c7e47011a95f4d136303f7320da71613299840f67f88fd1385ef53d5f2a0",
+    "version": "0.5.0"
   },
   "herdr": {
     "url": "https://github.com/omacom-io/herdr/archive/refs/tags/v0.8.0.tar.gz",
@@ -10,9 +10,9 @@
     "version": "0.8.0"
   },
   "tensaku": {
-    "url": "https://github.com/jondkinney/tensaku/archive/refs/tags/v0.28.0.tar.gz",
-    "sha256": "08f61dce1a4b629a1229c0b2cead642e165319e4b61a6f605fc3568d9f6183ee",
-    "version": "0.28.0"
+    "url": "https://github.com/jondkinney/tensaku/archive/refs/tags/v0.29.0.tar.gz",
+    "sha256": "31595a8b4600107a63c1e5889f50f40e1ef832e51cfc038c1a7750b987fd34d0",
+    "version": "0.29.0"
   },
   "hyprland-preview-share-picker": {
     "git": "https://github.com/WhySoBad/hyprland-preview-share-picker",
@@ -22,14 +22,14 @@
     "comment": "git pin: the release tarball omits the lib/hyprland-protocols submodule and build.rs needs git describe; the commit hash is the content pin (submodules pinned transitively via gitlinks)."
   },
   "cliamp": {
-    "url": "https://github.com/bjarneo/cliamp/archive/refs/tags/v1.63.2.tar.gz",
-    "sha256": "968ff98c1e49bae8a0ce63acf5c77a9621ef70756a048e3df5e79454b82a9eef",
-    "version": "1.63.2"
+    "url": "https://github.com/bjarneo/cliamp/archive/refs/tags/v2.2.0.tar.gz",
+    "sha256": "54ffbba6983880c915d2c13c83ca1339de2d2a3c5af3bb0a176923faa9afc015",
+    "version": "2.2.0"
   },
   "aether": {
-    "url": "https://github.com/bjarneo/aether/archive/refs/tags/v4.29.4.tar.gz",
-    "sha256": "ec46d524b9e562ead07ad0b6e85f5d16cc0c31e21cf5266d771dab95ef245d4e",
-    "version": "4.29.4"
+    "url": "https://github.com/bjarneo/aether/archive/refs/tags/v4.30.0.tar.gz",
+    "sha256": "f67c8d2c6f27f67a755bc279ece5ddb194f1bb165648280b9a7be86904d36ff5",
+    "version": "4.30.0"
   },
   "omacalc": {
     "url": "https://github.com/omacom-io/omacalc/archive/refs/tags/v0.2.2.tar.gz",
@@ -47,15 +47,15 @@
     "version": "0.5.0"
   },
   "voxtype": {
-    "url": "https://github.com/peteonrails/voxtype/releases/download/v0.7.5/voxtype-0.7.5-linux-x86_64-avx2",
-    "sha256": "18ae0510d0c964689f8c9b7119c0b9a45569985e82977dc4f1ef4d76fddd887c",
-    "version": "0.7.5"
+    "url": "https://github.com/peteonrails/voxtype/releases/download/v1.1.0/voxtype-1.1.0-linux-x86_64-avx2",
+    "sha256": "e7d5de68cc8fc610c3c961c47f879451db9bee4a2df152e9a66f1078072e7f28",
+    "version": "1.1.0"
   },
   "gpu-screen-recorder": {
     "git": "https://repo.dec05eba.com/gpu-screen-recorder",
-    "tag": "6.0.1",
-    "commit": "8c33f61c75af723f55c2c235d6807686579fe157",
-    "version": "6.0.1",
+    "tag": "6.1.3",
+    "commit": "396526a908f8f1b9cb826a9187a2c9150f44d94d",
+    "version": "6.1.3",
     "comment": "git pin: the cgit web host (git.dec05eba.com) sits behind an Anubis bot-check wall so no fetchable tarball exists; the smart-HTTP git endpoint is open. The commit hash IS the content pin -- build.sh clones the tag shallowly and hard-fails unless HEAD matches."
   },
   "zig": {
