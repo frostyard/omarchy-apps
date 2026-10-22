@@ -9,8 +9,11 @@ ship *in the image* — Omarchy's `omarchy-pkg-add` flow has nothing to
 install from on Debian, so flurry bakes the full set in.
 
 Same shape as [frostyard/bootc-debian](https://github.com/frostyard/bootc-debian):
-one build script per package, run in a `debian:trixie` container, publishing
-via `frostyard/repogen`.
+one build script per package, run in a `debian:trixie` container. Each push
+to `main` builds every package, attaches them to a GitHub release, and asks
+[frostyard/apt-publisher](https://github.com/frostyard/apt-publisher) to
+publish that release to `https://repository.frostyard.org/debian/` (`trixie`).
+This repository holds no signing key and no bucket credentials.
 
 ## Packages
 

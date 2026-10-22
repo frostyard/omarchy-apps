@@ -9,9 +9,12 @@ on:
 permissions:
   contents: read
 
+# A newer push cancels an older pull request build, but never a main run:
+# cancelling one between its release and its publication request would leave
+# a release that apt-publisher never publishes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -59,40 +62,111 @@ jobs:
           name: deb-${{ matrix.app }}
           path: dist/*.deb
 
+  # Publication goes through frostyard/apt-publisher, the single writer of
+  # https://repository.frostyard.org/debian/ (frostyard/core ADR-0055). This
+  # repository holds no signing key and no bucket credentials: it attaches the
+  # packages to a GitHub release and asks apt-publisher to publish that release.
   release:
-    name: Publish to repository
+    name: Release
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.repository == 'frostyard/omarchy-apps' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    timeout-minutes: 20
     permissions:
-      contents: write
-      attestations: write
-      id-token: write
+      contents: write # create the release and its tag
+      attestations: write # store the build provenance attestations
+      id-token: write # sign the attestations with this workflow's identity
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - name: Download packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: deb-*
           merge-multiple: true
           path: ./dist
 
-      - name: Publish to frostyard repo
-        uses: frostyard/repogen/.github/actions/publish-to-r2@main
+      # apt-publisher publishes every .deb in the release and refuses names
+      # outside omarchy-apps' entry in its config/producers.tsv. The release
+      # must therefore hold exactly one Debian 13 amd64 build of each app.
+      # Adding an app means adding it here, to the build matrix, and to
+      # producers.tsv in frostyard/apt-publisher.
+      - name: Check the packages
+        id: check
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          want="aether cliamp gpu-screen-recorder herdr hyprland-preview-share-picker moonlight-qt omacalc omacut omawrite tensaku ttfx voxtype"
+          names=()
+          for deb in dist/*.deb; do
+            name=$(dpkg-deb -f "$deb" Package)
+            version=$(dpkg-deb -f "$deb" Version)
+            arch=$(dpkg-deb -f "$deb" Architecture)
+            size=$(stat -c %s "$deb")
+            if [[ $arch != amd64 ]]; then
+              echo "::error::$deb is built for $arch, not amd64"
+              exit 1
+            fi
+            if [[ ! $version =~ ^[0-9][A-Za-z0-9.+]*-frostyard[0-9]{14}$ ]]; then
+              echo "::error::$deb has version $version, which is not an omarchy-apps build"
+              exit 1
+            fi
+            if [[ $(basename "$deb") != "${name}_${version}_${arch}.deb" ]]; then
+              echo "::error::$deb is not named ${name}_${version}_${arch}.deb"
+              exit 1
+            fi
+            if ((size >= 2147483648)); then
+              echo "::error::$deb is $size bytes; GitHub release assets must be under 2 GiB"
+              exit 1
+            fi
+            names+=("$name")
+          done
+          got=$(printf '%s\n' "${names[@]}" | sort | paste -sd ' ')
+          if [[ $got != "$want" ]]; then
+            echo "::error::expected the packages: $want; found: ${got:-none}"
+            exit 1
+          fi
+          echo "tag=main-$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}" >>"$GITHUB_OUTPUT"
+
+      # Binds each .deb to this workflow run. Verify with
+      # gh attestation verify FILE --repo frostyard/omarchy-apps --source-ref refs/heads/main
+      # apt-publisher registers omarchy-apps with attested=no, because it
+      # verifies against refs/tags/<tag> and these releases come from main.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          r2-bucket: frostyardrepo
-          purge-cache: "true"
-          cloudflare-zone: ${{ secrets.CLOUDFLARE_ZONE }}
-          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          gpg-private-key: ${{ secrets.REPOGEN_GPG_KEY }}
-          packages-dir: ./dist
-          package-type: deb
-          base-url: https://repository.frostyard.org
+          subject-path: dist/*.deb
+
+      # gh uploads the assets to a draft and publishes it once all are
+      # attached, so apt-publisher never sees a partial release. An existing
+      # release fails this step instead of being changed.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          gh release create "$TAG" dist/*.deb --target "$GITHUB_SHA" --latest \
+            --title "$TAG" \
+            --notes "Debian 13 (trixie) amd64 build of main at $GITHUB_SHA. frostyard/apt-publisher publishes it to https://repository.frostyard.org/debian/ (trixie)."
+
+  # Not continue-on-error: if the request fails, nothing was published and
+  # the run must fail. Re-running this job alone requests the same release
+  # again. The packages link trixie's libraries and carry no ~debNN marker,
+  # so the request names trixie, the only codename omarchy-apps may use.
+  request-publication:
+    name: Request APT publication
+    runs-on: ubuntu-latest
+    needs: release
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Request APT publication
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
+        with:
+          token: ${{ secrets.APT_PUBLISH_TOKEN }}
+          repository: frostyard/apt-publisher
+          event-type: publish-deb
+          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ needs.release.outputs.tag }}", "codenames": ["trixie"]}'
