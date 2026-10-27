@@ -43,6 +43,8 @@ Output lands in `dist/`. Every source is pinned in
 commit-verified git tag for gpu-screen-recorder, whose cgit host sits
 behind a bot-check wall). `check-dependencies.yml` proposes weekly bump
 PRs; CI must be green across the whole matrix before merging one.
+Because `GITHUB_TOKEN` cannot trigger `pull_request` runs, the workflow
+dispatches `build.yml` on the bump branch itself.
 
 ## Conventions
 

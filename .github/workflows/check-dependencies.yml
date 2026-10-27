@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write  # lets the job dispatch Build on the bump branch
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -111,6 +112,7 @@ jobs:
           fi
 
       - name: Create pull request
+        id: cpr
         if: steps.check.outputs.has_updates == 'true'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -128,3 +130,14 @@ jobs:
             full matrix is green.
           branch: update-upstream-versions
           delete-branch: true
+
+      # GitHub does not start pull_request workflows for a pull request that
+      # GITHUB_TOKEN opens or updates: that Build run waits in action_required
+      # and expires after 30 days. GITHUB_TOKEN can start workflow_dispatch,
+      # so dispatch Build on the bump branch. Its checks attach to the head
+      # commit and show on the pull request. Build's release job runs only on main.
+      - name: Build the bump branch
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref update-upstream-versions
