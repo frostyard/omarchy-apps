@@ -10,8 +10,8 @@
 #                      (dlopen'd libs, QML module plugins, runtime tools)
 #   APP_SMOKE          command run against the installed package in CI
 #   app_deps()         apt-get install of build dependencies
-#   app_build()        fetch via verified_download / pinned git, build, and
-#                      stage into $STAGE (rootfs-shaped: usr/bin, ...)
+#   app_build()        fetch via verified_download, build, and stage into
+#                      $STAGE (rootfs-shaped: usr/bin, ...)
 #
 # Output: dist/<name>_<version>-frostyard<stamp>_<arch>.deb
 # (override location with DIST=/path).
@@ -28,24 +28,6 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install --no-install-recommends --yes \
     build-essential curl ca-certificates dpkg-dev jq git file zstd
-
-# Pinned Rust toolchain for the Rust apps (installed on demand by rust_deps).
-# Trixie's rustc 1.85 predates several upstream MSRVs; rustup verifies
-# toolchain signatures on download. Bump alongside app version bumps that
-# demand newer.
-RUST_VERSION="1.96.0"
-rust_deps() {
-    apt-get install --no-install-recommends --yes rustup pkg-config
-    rustup default "$RUST_VERSION"
-}
-
-# Go apps: trixie's golang-go plus GOTOOLCHAIN=auto -- go.mod's toolchain
-# directive is honored and the downloaded toolchain is verified against the
-# Go checksum database.
-go_deps() {
-    apt-get install --no-install-recommends --yes golang-go
-    export GOTOOLCHAIN=auto GOFLAGS=-buildvcs=false
-}
 
 WORK="$(mktemp -d)"
 STAGE="$WORK/stage"

@@ -43,15 +43,7 @@ jobs:
           # rewritten from the pinned URL by version substitution, so every
           # entry's URL shape must contain the literal version.
           declare -A REPOS=(
-            [ttfx]=omacom-io/ttfx
-            [herdr]=omacom-io/herdr
-            [tensaku]=jondkinney/tensaku
-            [cliamp]=bjarneo/cliamp
-            [aether]=bjarneo/aether
             [voxtype]=peteonrails/voxtype
-            [omacalc]=omacom-io/omacalc
-            [omacut]=omacom-io/omacut
-            [omawrite]=omacom-io/omawrite
             [moonlight-qt]=moonlight-stream/moonlight-qt
           )
 
@@ -75,32 +67,6 @@ jobs:
               rm -f "$TMP"
             fi
           done
-
-          # Git-pinned apps (no usable tarball -- see checksums.json comments):
-          # resolve the newest release tag and its commit via ls-remote.
-          CURRENT_HPSP=$(jq -r '.["hyprland-preview-share-picker"].version' "$CHECKSUMS")
-          HPSP_URL=$(jq -r '.["hyprland-preview-share-picker"].git' "$CHECKSUMS")
-          LATEST_HPSP=$(git ls-remote --tags "$HPSP_URL" 2>/dev/null |
-            sed -n 's|.*refs/tags/v\([0-9][0-9.]*\)$|\1|p' | sort -V | tail -n1)
-          if [[ -n "$LATEST_HPSP" ]] && ver_gt "$LATEST_HPSP" "$CURRENT_HPSP"; then
-            HPSP_COMMIT=$(git ls-remote --tags "$HPSP_URL" "refs/tags/v$LATEST_HPSP" | cut -f1)
-            jq --arg t "v$LATEST_HPSP" --arg v "$LATEST_HPSP" --arg c "$HPSP_COMMIT" \
-              '.["hyprland-preview-share-picker"].tag=$t | .["hyprland-preview-share-picker"].version=$v | .["hyprland-preview-share-picker"].commit=$c' \
-              "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
-            UPDATES="${UPDATES}hyprland-preview-share-picker: $CURRENT_HPSP -> $LATEST_HPSP\n"
-          fi
-
-          CURRENT_GSR=$(jq -r '.["gpu-screen-recorder"].version' "$CHECKSUMS")
-          GSR_URL=$(jq -r '.["gpu-screen-recorder"].git' "$CHECKSUMS")
-          LATEST_GSR=$(git ls-remote --tags "$GSR_URL" 2>/dev/null |
-            sed -n 's|.*refs/tags/\([0-9][0-9.]*\)$|\1|p' | sort -V | tail -n1)
-          if [[ -n "$LATEST_GSR" ]] && ver_gt "$LATEST_GSR" "$CURRENT_GSR"; then
-            GSR_COMMIT=$(git ls-remote --tags "$GSR_URL" "refs/tags/$LATEST_GSR" | cut -f1)
-            jq --arg t "$LATEST_GSR" --arg c "$GSR_COMMIT" \
-              '.["gpu-screen-recorder"].tag=$t | .["gpu-screen-recorder"].version=$t | .["gpu-screen-recorder"].commit=$c' \
-              "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
-            UPDATES="${UPDATES}gpu-screen-recorder: $CURRENT_GSR -> $LATEST_GSR\n"
-          fi
 
           if [[ -n "$UPDATES" ]]; then
             echo "has_updates=true" >> "$GITHUB_OUTPUT"
