@@ -15,6 +15,9 @@
 #
 # Output: dist/<name>_<version>-frostyard<stamp>_<arch>.deb
 # (override location with DIST=/path).
+#
+# The .deb carries Frostyard-Inputs, the digest of the app's inputs
+# (lib/inputs.sh); plan.sh publishes an app only when that digest changed.
 set -euo pipefail
 [[ "${DEBUG_BUILD:-0}" == "1" ]] && set -x
 
@@ -38,12 +41,17 @@ trap 'rm -rf "$WORK"' EXIT
 source "$SRCDIR/download/verified-download.sh"
 # shellcheck source=lib/deb.sh
 source "$SRCDIR/lib/deb.sh"
+# shellcheck source=lib/inputs.sh
+source "$SRCDIR/lib/inputs.sh"
 # shellcheck source=/dev/null
 source "$SRCDIR/apps/$APP.sh"
 
 VERSION="$(jq -r --arg a "$APP" '.[$a].version' "$SRCDIR/download/checksums.json")"
 [[ -n "$VERSION" && "$VERSION" != null ]] || { echo "no version pinned for $APP" >&2; exit 1; }
 
+# The digest plan.sh compares against the published Frostyard-Inputs field.
+INPUTS="$(app_inputs "$APP")"
+
 app_deps
 app_build
-make_deb "$APP" "$VERSION" "$APP_DESC" "$STAGE" "${APP_EXTRA_DEPENDS:-}"
+make_deb "$APP" "$VERSION" "$APP_DESC" "$STAGE" "${APP_EXTRA_DEPENDS:-}" "$INPUTS"

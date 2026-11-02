@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by build.sh: APP_* are read there
 # moonlight-qt: game-streaming client (pairs with the sunshine host).
 # Upstream publishes NO amd64 debs (its Cloudsmith apt repo carries arm64
 # only, verified 2026-08-26) and is not in Debian; the canonical x86_64
