@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by build.sh: APP_* are read there
 # voxtype: AI dictation (whisper-based). Upstream ships prebuilt binaries
 # only; we repackage the avx2 variant (x86-64-v3 floor -- same baseline the
 # omarchy AUR package accepts).

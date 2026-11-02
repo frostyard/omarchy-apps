@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      rebuild:
+        description: "Also rebuild and publish this app on main, whether or not its inputs changed"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -17,32 +23,116 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Fast gate: the scripts, the plan script and its tests, before any build.
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Every file at once: the scripts pass their `# shellcheck source=`
+      # paths against this input list. ubuntu-latest ships shellcheck.
+      - name: Shellcheck
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          shellcheck build.sh plan.sh lib/*.sh apps/*.sh download/*.sh tests/*.sh
+
+      - name: Run the tests
+        run: bash tests/run.sh
+
+  # Which apps this run builds and publishes, from the published index and the
+  # Frostyard-Inputs field of each app's newest published version.
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    needs: check
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      publish: ${{ steps.decide.outputs.publish }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The published trixie main amd64 index: the record of what apt serves.
+      # A failed fetch fails the run instead of rebuilding everything.
+      - name: Fetch the published packages index
+        env:
+          INDEX_URL: https://repository.frostyard.org/debian/dists/trixie/main/binary-amd64/Packages
+          INDEX: ${{ runner.temp }}/Packages
+        run: curl -fsSL --retry 3 --retry-delay 2 --output "$INDEX" "$INDEX_URL"
+
+      - name: Decide what to build and publish
+        id: decide
+        env:
+          INDEX: ${{ runner.temp }}/Packages
+          REBUILD: ${{ inputs.rebuild }}
+          ON_MAIN: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        run: |
+          set -euo pipefail
+          # stderr: one decision line per app; the summary table is for the run page.
+          plan=$(bash plan.sh --packages "$INDEX" --rebuild "$REBUILD" --summary "$GITHUB_STEP_SUMMARY")
+          if [[ $ON_MAIN == true ]]; then
+            build=$plan
+            publish=$plan
+          else
+            # A pull request, or a dispatch on another branch: build every app
+            # so the change is tested, and publish nothing.
+            build=$(
+              for f in apps/*.sh; do
+                f=${f##*/}
+                printf '%s\n' "${f%.sh}"
+              done | jq -R . | jq -cs 'sort'
+            )
+            publish='[]'
+            {
+              echo
+              echo "This run is not on \`main\`: it builds every app and publishes nothing."
+              echo "A push to \`main\` with these inputs would publish \`${plan}\`."
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo "build=$build"
+            echo "publish=$publish"
+          } >>"$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.app }}
     runs-on: ubuntu-latest
+    needs: plan
+    # Nothing changed: no matrix, and the release and publication jobs skip.
+    if: needs.plan.outputs.build != '[]'
     container:
       image: debian:trixie
+    # A container job runs steps with sh by default; the steps use bash.
+    defaults:
+      run:
+        shell: bash
     env:
       HOME: "/root"
     strategy:
       fail-fast: false
       matrix:
-        app:
-          - voxtype
-          - moonlight-qt
+        app: ${{ fromJSON(needs.plan.outputs.build) }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build package
-        run: bash build.sh "${{ matrix.app }}"
+        env:
+          APP: ${{ matrix.app }}
+        run: bash build.sh "$APP"
 
       - name: Verify package installs and runs
+        env:
+          APP: ${{ matrix.app }}
         run: |
+          set -euo pipefail
           apt-get update
           apt-get install --yes ./dist/*.deb
-          smoke=$(bash -c 'source apps/"${{ matrix.app }}".sh >/dev/null 2>&1 || true; echo "$APP_SMOKE"')
+          smoke=$(bash -c 'source "apps/$APP.sh" >/dev/null 2>&1 || true; echo "$APP_SMOKE"')
           echo "smoke: $smoke"
           bash -c "$smoke"
 
@@ -59,8 +149,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: build
-    if: github.repository == 'frostyard/omarchy-apps' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [plan, build]
+    if: github.repository == 'frostyard/omarchy-apps' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.plan.outputs.publish != '[]'
     timeout-minutes: 20
     permissions:
       contents: write # create the release and its tag
@@ -79,20 +169,23 @@ jobs:
 
       # apt-publisher publishes every .deb in the release and refuses names
       # outside omarchy-apps' entry in its config/producers.tsv. The release
-      # must therefore hold exactly one Debian 13 amd64 build of each app.
-      # Adding an app means adding it here, to the build matrix, and to
-      # producers.tsv in frostyard/apt-publisher.
+      # must therefore hold exactly one Debian 13 amd64 build of each app this
+      # run publishes -- the apps whose inputs changed, or the one app named by
+      # the rebuild input, not every app -- and nothing else.
       - name: Check the packages
         id: check
+        env:
+          PUBLISH: ${{ needs.plan.outputs.publish }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          want="moonlight-qt voxtype"
+          want=$(printf '%s' "$PUBLISH" | jq -r '.[]' | sort | paste -sd ' ')
           names=()
           for deb in dist/*.deb; do
             name=$(dpkg-deb -f "$deb" Package)
             version=$(dpkg-deb -f "$deb" Version)
             arch=$(dpkg-deb -f "$deb" Architecture)
+            inputs=$(dpkg-deb -f "$deb" Frostyard-Inputs || true)
             size=$(stat -c %s "$deb")
             if [[ $arch != amd64 ]]; then
               echo "::error::$deb is built for $arch, not amd64"
@@ -106,6 +199,10 @@ jobs:
               echo "::error::$deb is not named ${name}_${version}_${arch}.deb"
               exit 1
             fi
+            if [[ ! $inputs =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::$deb has no valid Frostyard-Inputs field (${inputs:-none}); the next plan cannot see it"
+              exit 1
+            fi
             if ((size >= 2147483648)); then
               echo "::error::$deb is $size bytes; GitHub release assets must be under 2 GiB"
               exit 1
@@ -114,7 +211,7 @@ jobs:
           done
           got=$(printf '%s\n' "${names[@]}" | sort | paste -sd ' ')
           if [[ $got != "$want" ]]; then
-            echo "::error::expected the packages: $want; found: ${got:-none}"
+            echo "::error::expected the packages: ${want:-none}; found: ${got:-none}"
             exit 1
           fi
           echo "tag=main-$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}" >>"$GITHUB_OUTPUT"
