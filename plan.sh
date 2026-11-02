@@ -48,10 +48,14 @@ done
 ((${#apps[@]} > 0)) || { echo "no apps in $SRCDIR/apps" >&2; exit 1; }
 mapfile -t apps < <(printf '%s\n' "${apps[@]}" | LC_ALL=C sort)
 
-case " ${apps[*]} " in
-    *" $rebuild "*) ;;
-    *) [[ -z "$rebuild" ]] || { echo "unknown app for --rebuild: $rebuild" >&2; exit 1; } ;;
-esac
+# --rebuild names exactly one app, or nothing.
+if [[ -n "$rebuild" ]]; then
+    found=0
+    for app in "${apps[@]}"; do
+        [[ "$app" == "$rebuild" ]] && found=1
+    done
+    ((found)) || { echo "unknown app for --rebuild: $rebuild" >&2; exit 1; }
+fi
 
 # Package<TAB>Version<TAB>Frostyard-Inputs for every stanza of the index.
 # Multi-line field continuations start with a space and carry nothing we need.

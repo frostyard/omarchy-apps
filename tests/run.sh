@@ -216,6 +216,9 @@ run_plan --packages "$PKG" --rebuild nosuchapp
 expect_nonzero "--rebuild of an unknown app fails" "$PLAN_STATUS"
 expect_list "--rebuild of an unknown app prints nothing" ''
 
+run_plan --packages "$PKG" --rebuild "moonlight-qt voxtype"
+expect_nonzero "--rebuild of two names in one value fails" "$PLAN_STATUS"
+
 run_plan --rebuild voxtype
 expect_nonzero "no --packages fails" "$PLAN_STATUS"
 

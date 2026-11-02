@@ -105,6 +105,10 @@ jobs:
     if: needs.plan.outputs.build != '[]'
     container:
       image: debian:trixie
+    # A container job runs steps with sh by default; the steps use bash.
+    defaults:
+      run:
+        shell: bash
     env:
       HOME: "/root"
     strategy:
