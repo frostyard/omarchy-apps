@@ -28,17 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         app:
-          - ttfx
-          - herdr
-          - tensaku
-          - hyprland-preview-share-picker
-          - cliamp
-          - aether
           - voxtype
-          - omacalc
-          - omacut
-          - omawrite
-          - gpu-screen-recorder
           - moonlight-qt
 
     steps:
@@ -97,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          want="aether cliamp gpu-screen-recorder herdr hyprland-preview-share-picker moonlight-qt omacalc omacut omawrite tensaku ttfx voxtype"
+          want="moonlight-qt voxtype"
           names=()
           for deb in dist/*.deb; do
             name=$(dpkg-deb -f "$deb" Package)
