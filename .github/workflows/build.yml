@@ -218,8 +218,8 @@ jobs:
 
       # Binds each .deb to this workflow run. Verify with
       # gh attestation verify FILE --repo frostyard/omarchy-apps --source-ref refs/heads/main
-      # apt-publisher registers omarchy-apps with attested=no, because it
-      # verifies against refs/tags/<tag> and these releases come from main.
+      # apt-publisher registers omarchy-apps as build.yml@refs/heads/main and
+      # verifies with --signer-workflow and --source-ref (its ADR-0004).
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
