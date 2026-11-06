@@ -115,6 +115,12 @@ mut_b1_alias_wrong_target() {
 	changed "$2" "$1" CLAUDE.md
 }
 
+mut_b1_alias_dangling() {
+	rm -f "$1/GEMINI.md"
+	ln -s MISSING.md "$1/GEMINI.md"
+	changed "$2" "$1" GEMINI.md
+}
+
 # B2: the corrections inbox.
 mut_b2_missing_file() {
 	rm -f "$1/.memory/corrections.jsonl"
@@ -158,6 +164,43 @@ mut_b2_invalid_date() {
 mut_b2_empty_evidence() {
 	printf '%s\n' '{"date": "2026-11-06", "scope": "s", "correction": "c", "evidence": "  ", "promoted_to": ""}' \
 		>>"$1/.memory/corrections.jsonl"
+	changed "$2" "$1" .memory/corrections.jsonl
+}
+
+mut_b2_not_object() {
+	printf '%s\n' '[1]' >>"$1/.memory/corrections.jsonl"
+	changed "$2" "$1" .memory/corrections.jsonl
+}
+
+mut_b2_unknown_key() {
+	python3 - "$1/.memory/corrections.jsonl" <<'PY'
+import json
+import sys
+p = sys.argv[1]
+with open(p, encoding='utf-8') as f:
+    lines = f.read().splitlines()
+value = json.loads(lines[0])
+value['extra'] = 'x'
+lines[0] = json.dumps(value, separators=(', ', ': '))
+with open(p, 'w', encoding='utf-8', newline='') as f:
+    f.write('\n'.join(lines) + '\n')
+PY
+	changed "$2" "$1" .memory/corrections.jsonl
+}
+
+mut_b2_bad_date_format() {
+	python3 - "$1/.memory/corrections.jsonl" <<'PY'
+import json
+import sys
+p = sys.argv[1]
+with open(p, encoding='utf-8') as f:
+    lines = f.read().splitlines()
+value = json.loads(lines[0])
+value['date'] = '2026-1-05'
+lines[0] = json.dumps(value, separators=(', ', ': '))
+with open(p, 'w', encoding='utf-8', newline='') as f:
+    f.write('\n'.join(lines) + '\n')
+PY
 	changed "$2" "$1" .memory/corrections.jsonl
 }
 
@@ -353,6 +396,18 @@ mut_b6_empty_paths() {
 	changed "$2" "$1" .github/risk-paths.json
 }
 
+mut_b6_paths_not_list() {
+	jq '.paths = true' "$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+mut_b6_entry_not_object() {
+	jq '.paths += [5]' "$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
 mut_b6_why_too_long() {
 	jq --arg why "publication: $(printf 'x%.0s' {1..200})" \
 		'(.paths[] | select(.glob == "build.sh") | .why) = $why' \
@@ -503,6 +558,7 @@ order=(
 	b1_regular_claude
 	b1_agents_symlink
 	b1_alias_wrong_target
+	b1_alias_dangling
 	b2_missing_file
 	b2_blank_line
 	b2_final_invalid_no_newline
@@ -511,6 +567,9 @@ order=(
 	b2_non_string_value
 	b2_invalid_date
 	b2_empty_evidence
+	b2_not_object
+	b2_unknown_key
+	b2_bad_date_format
 	b2_cr_separated_records
 	b2_bom_evidence
 	b3_no_org_adrs
@@ -544,6 +603,8 @@ order=(
 	b6_schema_version_2
 	b6_invalid_json
 	b6_empty_paths
+	b6_paths_not_list
+	b6_entry_not_object
 	b6_why_too_long
 	b6_caller_main
 	b6_caller_wrong_workflow
@@ -576,6 +637,7 @@ declare -A expected=(
 	[b1_regular_claude]='CLAUDE.md must be a symlink to AGENTS.md'
 	[b1_agents_symlink]='AGENTS.md must be a regular file'
 	[b1_alias_wrong_target]='CLAUDE.md resolves to'
+	[b1_alias_dangling]='GEMINI.md does not resolve'
 	[b2_missing_file]='.memory/corrections.jsonl is missing'
 	[b2_blank_line]='blank line'
 	[b2_final_invalid_no_newline]='invalid JSON'
@@ -584,6 +646,9 @@ declare -A expected=(
 	[b2_non_string_value]='value for promoted_to is not a string'
 	[b2_invalid_date]='invalid date: 2026-02-30'
 	[b2_empty_evidence]='evidence is empty'
+	[b2_not_object]='not a JSON object'
+	[b2_unknown_key]='unknown key(s): extra'
+	[b2_bad_date_format]='invalid date: 2026-1-05'
 	[b2_cr_separated_records]='invalid JSON'
 	[b2_bom_evidence]='evidence is empty'
 	[b3_no_org_adrs]='docs/org-adrs.md is missing'
@@ -617,6 +682,8 @@ declare -A expected=(
 	[b6_schema_version_2]='must set schema_version 1'
 	[b6_invalid_json]='.github/risk-paths.json is not valid JSON'
 	[b6_empty_paths]='.github/risk-paths.json has no paths entries'
+	[b6_paths_not_list]='.github/risk-paths.json has no valid paths list'
+	[b6_entry_not_object]='.github/risk-paths.json: checked 11 of 12 entries'
 	[b6_why_too_long]='build.sh: why is more than 200 characters'
 	[b6_caller_main]='uses is not pinned to a 40-character commit SHA'
 	[b6_caller_wrong_workflow]="no workflow calls frostyard/core's risk-paths.yml"

@@ -23,7 +23,7 @@ for alias in CLAUDE.md GEMINI.md .cursorrules .github/copilot-instructions.md; d
 	target=$(readlink "$ROOT/$alias")
 	[[ $target != /* ]] ||
 		fail "$alias must be a relative symlink, not $target"
-	resolved=$(realpath "$ROOT/$alias" 2>/dev/null) ||
+	resolved=$(realpath -e "$ROOT/$alias" 2>/dev/null) ||
 		fail "$alias does not resolve; its target is $target"
 	[[ $resolved == "$(realpath "$ROOT/AGENTS.md")" ]] ||
 		fail "$alias resolves to $resolved, not AGENTS.md"
@@ -246,6 +246,7 @@ risk=$ROOT/.github/risk-paths.json
 jq -e . "$risk" >/dev/null 2>&1 || fail ".github/risk-paths.json is not valid JSON"
 [[ $(jq -r '.schema_version' "$risk") == 1 ]] ||
 	fail ".github/risk-paths.json must set schema_version 1"
+[[ $(jq -r '.paths | type' "$risk") == array ]] || fail ".github/risk-paths.json has no valid paths list"
 risk_count=$(jq -r '.paths | length' "$risk")
 [[ $risk_count =~ ^[0-9]+$ ]] || fail ".github/risk-paths.json has no valid paths list"
 ((risk_count > 0)) || fail ".github/risk-paths.json has no paths entries"
@@ -256,7 +257,7 @@ while IFS=$'\t' read -r glob why; do
 		fail "$glob: why names no risk-paths category"
 	fi
 	((${#why} <= 200)) || fail "$glob: why is more than 200 characters"
-done < <(jq -r '.paths[] | [.glob, .why] | @tsv' "$risk")
+done < <(jq -r '.paths[] | select(type == "object") | [.glob, .why] | @tsv' "$risk")
 ((risk_checked == risk_count)) || fail ".github/risk-paths.json: checked $risk_checked of $risk_count entries"
 for glob in '.github/risk-paths.json' '.github/workflows/**' 'build.sh' 'plan.sh' 'lib/**' 'apps/**' 'download/**' 'tests/**' 'Makefile' 'mise.toml' 'mise.lock'; do
 	[[ $(jq -r --arg g "$glob" '[.paths[].glob] | index($g) != null' "$risk") == true ]] ||
