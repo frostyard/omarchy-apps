@@ -1,0 +1,5 @@
+# Tool pins for omarchy-apps and its gates (core ADR-0043).
+[tools]
+shellcheck = "0.11.0"
+actionlint = "1.7.7"
+jq = "1.8.1"
