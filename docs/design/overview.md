@@ -6,7 +6,14 @@ Living document. Rationale: [core ADR-0067](https://github.com/frostyard/core/bl
 
 `omarchy-apps` builds Debian 13 (`trixie`) packages for the Omarchy ecosystem from pinned upstream sources. The maintained packages are `voxtype` and `moonlight-qt`. They serve snosi sysexts: `mkosi.images/voxtype/mkosi.conf` uses `Packages=voxtype`, and `mkosi.images/moonlight/mkosi.conf` uses `Packages=moonlight-qt`.
 
-The repository built 10 more Omarchy applications for snosi's flurry desktop: `aether`, `cliamp`, `gpu-screen-recorder`, `herdr`, `hyprland-preview-share-picker`, `omacalc`, `omacut`, `omawrite`, `tensaku` and `ttfx`. snosi removed flurry in `frostyard/snosi#908` on 2026-08-31. Those 10 recipes left the build on 2026-11-02 because no Frostyard image or sysext used them. Core ADR-0066 records this rule. Their recipes remain in git history, and their published versions remain in the APT repository until a separate withdrawal decision.
+The repository has the same build shape as `frostyard/bootc-debian`: one build script for one package, with each app in a separate recipe and a container build for the package. The repository built 10 more Omarchy applications for snosi's flurry desktop: `aether`, `cliamp`, `gpu-screen-recorder`, `herdr`, `hyprland-preview-share-picker`, `omacalc`, `omacut`, `omawrite`, `tensaku` and `ttfx`. snosi removed flurry in `frostyard/snosi#908` on 2026-08-31. Those 10 recipes left the build on 2026-11-02 because no Frostyard image or sysext used them. Core ADR-0066 records this rule. Their recipes remain in git history, and their published versions remain in the APT repository until a separate withdrawal decision.
+
+## Packages
+
+| Package | Upstream | What it is |
+| --- | --- | --- |
+| `voxtype` | [peteonrails/voxtype](https://github.com/peteonrails/voxtype) (prebuilt binary, AVX2) | AI dictation for the snosi `voxtype` sysext |
+| `moonlight-qt` | [moonlight-stream/moonlight-qt](https://github.com/moonlight-stream/moonlight-qt) (AppImage repack) | Game-streaming client for the snosi `moonlight` sysext (pairs with the sunshine sysext) |
 
 ## Design
 
@@ -18,7 +25,7 @@ On `main`, `plan.sh` reads the published Packages index and compares the newest 
 
 A pull request or a dispatch outside `main` builds every app. It does not publish. Leave `rebuild` empty for normal publication. Set `rebuild` to one app name in the Build workflow to force that app, whether or not its digest changed. This is useful after a Debian base or build package change that is not in the input digest.
 
-The build container has a debian:trixie base and installs build dependencies with `apt-get`. These values are not part of the input digest. Runtime dependencies come from `dpkg-shlibdeps`, plus app-specific runtime dependencies. The voxtype package uses the upstream AVX2 binary and sets an x86-64-v3 CPU floor, matching the Omarchy Arch package.
+The build container has a debian:trixie base and installs build dependencies with `apt-get`. These values are not part of the input digest. Runtime `Depends` come from `dpkg-shlibdeps`, plus per-app extras for libraries that the app loads with dlopen. Libraries that the app only probes at run time are deliberately NOT dependencies. The voxtype package uses the upstream AVX2 binary and sets an x86-64-v3 CPU floor, matching the Omarchy Arch package.
 
 The build workflow validates the release assets, creates a timestamp tag and attaches exactly one `amd64` `.deb` for each published app. It sends a `publish-deb` dispatch to frostyard/apt-publisher with codename `trixie`. This repository has no signing key or APT bucket credential. apt-publisher keeps the newest 2 versions of each app. Older versions leave the index as new versions arrive; pool files stay.
 

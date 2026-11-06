@@ -103,7 +103,24 @@ mut_b1_regular_claude() {
 	changed "$2" "$1" CLAUDE.md
 }
 
+mut_b1_agents_symlink() {
+	rm -f "$1/AGENTS.md"
+	ln -s README.md "$1/AGENTS.md"
+	changed "$2" "$1" AGENTS.md
+}
+
+mut_b1_alias_wrong_target() {
+	rm -f "$1/CLAUDE.md"
+	ln -s README.md "$1/CLAUDE.md"
+	changed "$2" "$1" CLAUDE.md
+}
+
 # B2: the corrections inbox.
+mut_b2_missing_file() {
+	rm -f "$1/.memory/corrections.jsonl"
+	changed "$2" "$1" .memory/corrections.jsonl
+}
+
 mut_b2_blank_line() {
 	printf '\n' >>"$1/.memory/corrections.jsonl"
 	changed "$2" "$1" .memory/corrections.jsonl
@@ -170,6 +187,31 @@ mut_b3_no_plans_template() {
 	changed "$2" "$1" docs/plans/TEMPLATE.md
 }
 
+mut_b3_no_docs_readme() {
+	rm -f "$1/docs/README.md"
+	changed "$2" "$1" docs/README.md
+}
+
+mut_b3_no_docs_org_link() {
+	sed -i '/org-adrs\.md/d' "$1/docs/README.md"
+	changed "$2" "$1" docs/README.md
+}
+
+mut_b3_no_adr_template() {
+	rm -f "$1/docs/adr/TEMPLATE.md"
+	changed "$2" "$1" docs/adr/TEMPLATE.md
+}
+
+mut_b3_no_design_template() {
+	rm -f "$1/docs/design/TEMPLATE.md"
+	changed "$2" "$1" docs/design/TEMPLATE.md
+}
+
+mut_b3_no_specs_template() {
+	rm -f "$1/docs/specs/TEMPLATE.md"
+	changed "$2" "$1" docs/specs/TEMPLATE.md
+}
+
 # B4: the make gate and the tool pins.
 mut_b4_ci_without_verify() {
 	sed -i 's/^ci: verify/ci:/' "$1/Makefile"
@@ -181,6 +223,21 @@ mut_b4_no_mise_lock() {
 	changed "$2" "$1" mise.lock
 }
 
+mut_b4_no_verify_target() {
+	sed -i '/^verify:/d' "$1/Makefile"
+	changed "$2" "$1" Makefile
+}
+
+mut_b4_no_check_target() {
+	sed -i '/^check:/d' "$1/Makefile"
+	changed "$2" "$1" Makefile
+}
+
+mut_b4_no_mise_toml() {
+	rm -f "$1/mise.toml"
+	changed "$2" "$1" mise.toml
+}
+
 # B5: pinned, least-privilege workflows.
 mut_b5_unpinned_uses() {
 	sed -i 's|@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1|@v4|' "$1/.github/workflows/ci.yml"
@@ -190,6 +247,32 @@ mut_b5_unpinned_uses() {
 mut_b5_no_persist_credentials() {
 	sed -i '/persist-credentials: false/d' "$1/.github/workflows/ci.yml"
 	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_no_version_comment() {
+	sed -i 's| # v7\.0\.1||' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_no_v_version_comment() {
+	sed -i 's| # v7\.0\.1| # checkout-7|' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_no_top_permissions() {
+	sed -i '/^permissions:$/d; /^  contents: read$/d' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_permissions_empty_with_text() {
+	sed -i 's/^permissions: {}$/permissions: {} # fixture/' "$1/.github/workflows/risk-paths.yml"
+	changed "$2" "$1" .github/workflows/risk-paths.yml
+}
+
+mut_b5_no_workflow_files() {
+	rm -f "$1"/.github/workflows/*.yml "$1"/.github/workflows/*.yaml
+	printf 'fixture\n' >"$1/.github/workflows/fixture.txt"
+	changed "$2" "$1" .github/workflows/fixture.txt
 }
 
 # A checkout that is not the first key of its list item: the step starts with
@@ -246,6 +329,38 @@ mut_b6_no_build_glob() {
 	changed "$2" "$1" .github/risk-paths.json
 }
 
+mut_b6_why_no_category() {
+	jq '(.paths[] | select(.glob == "build.sh") | .why) = "packages: x"' "$1/.github/risk-paths.json" \
+		>"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+mut_b6_schema_version_2() {
+	jq '.schema_version = 2' "$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+mut_b6_invalid_json() {
+	printf '{not json\n' >"$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+mut_b6_empty_paths() {
+	jq '.paths = []' "$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+mut_b6_why_too_long() {
+	jq --arg why "publication: $(printf 'x%.0s' {1..200})" \
+		'(.paths[] | select(.glob == "build.sh") | .why) = $why' \
+		"$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
 # The unpinned caller ref: the B5 pin scan reports it before B6 reads it.
 mut_b6_caller_main() {
 	sed -i 's|@ed474fbbcf8351a643124c2d35b7d8c5fdd0f915|@main|' "$1/.github/workflows/risk-paths.yml"
@@ -271,10 +386,25 @@ mut_b12_no_make_ci() {
 	changed "$2" "$1" .github/workflows/ci.yml
 }
 
+mut_b12_no_pull_request() {
+	sed -i '/^  pull_request:$/{N;d}' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b12_ci_missing() {
+	rm -f "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
 # B13: Dependabot.
 mut_b13_no_github_actions() {
 	sed -i 's/^  - package-ecosystem: "github-actions"$/  - package-ecosystem: "npm"/' \
 		"$1/.github/dependabot.yml"
+	changed "$2" "$1" .github/dependabot.yml
+}
+
+mut_b13_dependabot_missing() {
+	rm -f "$1/.github/dependabot.yml"
 	changed "$2" "$1" .github/dependabot.yml
 }
 
@@ -285,10 +415,25 @@ mut_b14_no_security_url() {
 	changed "$2" "$1" SECURITY.md
 }
 
+mut_b14_security_missing() {
+	rm -f "$1/SECURITY.md"
+	changed "$2" "$1" SECURITY.md
+}
+
 # B15: no CODEOWNERS.
 mut_b15_codeowners() {
 	printf '* @frostyard/owners\n' >"$1/.github/CODEOWNERS"
 	changed "$2" "$1" .github/CODEOWNERS
+}
+
+mut_b15_root_codeowners() {
+	printf '* @frostyard/owners\n' >"$1/CODEOWNERS"
+	changed "$2" "$1" CODEOWNERS
+}
+
+mut_b15_docs_codeowners() {
+	printf '* @frostyard/owners\n' >"$1/docs/CODEOWNERS"
+	changed "$2" "$1" docs/CODEOWNERS
 }
 
 # B16: no leftover agent-framework trees.
@@ -304,6 +449,36 @@ mut_b16_claude_other_file() {
 	changed "$2" "$1" .claude
 }
 
+mut_b16_docs_superpowers() {
+	mkdir -p "$1/docs/superpowers"
+	printf 'x\n' >"$1/docs/superpowers/x"
+	changed "$2" "$1" docs/superpowers
+}
+
+mut_b16_cursor_rules() {
+	mkdir -p "$1/.cursor/rules"
+	printf 'x\n' >"$1/.cursor/rules/x"
+	changed "$2" "$1" .cursor/rules
+}
+
+mut_b16_gaai_tree() {
+	mkdir -p "$1/.gaai"
+	printf 'x\n' >"$1/.gaai/x"
+	changed "$2" "$1" .gaai
+}
+
+mut_b16_yeti_tree() {
+	mkdir -p "$1/yeti"
+	printf 'x\n' >"$1/yeti/x"
+	changed "$2" "$1" yeti
+}
+
+mut_b16_cairn_tree() {
+	mkdir -p "$1/cairn"
+	printf 'x\n' >"$1/cairn/x"
+	changed "$2" "$1" cairn
+}
+
 # B17: the README.
 mut_b17_duplicate_marker() {
 	printf '<!-- readme-kind: packaging -->\n' >>"$1/README.md"
@@ -316,11 +491,19 @@ mut_b17_long_readme() {
 	changed "$2" "$1" README.md
 }
 
+mut_b17_missing_marker() {
+	sed -i '/^<!-- readme-kind: packaging -->$/d' "$1/README.md"
+	changed "$2" "$1" README.md
+}
+
 order=(
 	unmutated
 	b1_remove_gemini
 	b1_absolute_cursorrules
 	b1_regular_claude
+	b1_agents_symlink
+	b1_alias_wrong_target
+	b2_missing_file
 	b2_blank_line
 	b2_final_invalid_no_newline
 	b2_duplicate_key
@@ -332,10 +515,23 @@ order=(
 	b2_bom_evidence
 	b3_no_org_adrs
 	b3_no_plans_template
+	b3_no_docs_readme
+	b3_no_docs_org_link
+	b3_no_adr_template
+	b3_no_design_template
+	b3_no_specs_template
 	b4_ci_without_verify
+	b4_no_verify_target
+	b4_no_check_target
+	b4_no_mise_toml
 	b4_no_mise_lock
 	b5_unpinned_uses
 	b5_no_persist_credentials
+	b5_no_version_comment
+	b5_no_v_version_comment
+	b5_no_top_permissions
+	b5_permissions_empty_with_text
+	b5_no_workflow_files
 	b5_name_first_checkout
 	b5_bare_dash_checkout
 	b5_second_step_missing_persist
@@ -344,23 +540,43 @@ order=(
 	b5_permissions_write_scope
 	b6_no_risk_json
 	b6_no_build_glob
+	b6_why_no_category
+	b6_schema_version_2
+	b6_invalid_json
+	b6_empty_paths
+	b6_why_too_long
 	b6_caller_main
 	b6_caller_wrong_workflow
 	b7_rename_risk_heading
 	b12_no_make_ci
+	b12_no_pull_request
+	b12_ci_missing
 	b13_no_github_actions
+	b13_dependabot_missing
 	b14_no_security_url
+	b14_security_missing
 	b15_codeowners
+	b15_root_codeowners
+	b15_docs_codeowners
 	b16_planning_tree
+	b16_docs_superpowers
+	b16_cursor_rules
+	b16_gaai_tree
+	b16_yeti_tree
+	b16_cairn_tree
 	b16_claude_other_file
 	b17_duplicate_marker
 	b17_long_readme
+	b17_missing_marker
 )
 
 declare -A expected=(
 	[b1_remove_gemini]='GEMINI.md must be a symlink to AGENTS.md'
 	[b1_absolute_cursorrules]='.cursorrules must be a relative symlink'
 	[b1_regular_claude]='CLAUDE.md must be a symlink to AGENTS.md'
+	[b1_agents_symlink]='AGENTS.md must be a regular file'
+	[b1_alias_wrong_target]='CLAUDE.md resolves to'
+	[b2_missing_file]='.memory/corrections.jsonl is missing'
 	[b2_blank_line]='blank line'
 	[b2_final_invalid_no_newline]='invalid JSON'
 	[b2_duplicate_key]='duplicate key(s): scope'
@@ -372,10 +588,23 @@ declare -A expected=(
 	[b2_bom_evidence]='evidence is empty'
 	[b3_no_org_adrs]='docs/org-adrs.md is missing'
 	[b3_no_plans_template]='docs/plans/TEMPLATE.md is missing'
+	[b3_no_docs_readme]='docs/README.md is missing'
+	[b3_no_docs_org_link]='docs/README.md does not link org-adrs.md'
+	[b3_no_adr_template]='docs/adr/TEMPLATE.md is missing'
+	[b3_no_design_template]='docs/design/TEMPLATE.md is missing'
+	[b3_no_specs_template]='docs/specs/TEMPLATE.md is missing'
 	[b4_ci_without_verify]='the Makefile ci: rule must list verify'
+	[b4_no_verify_target]='the Makefile has no verify: target'
+	[b4_no_check_target]='the Makefile has no check: target'
+	[b4_no_mise_toml]='mise.toml is missing'
 	[b4_no_mise_lock]='mise.lock is missing'
 	[b5_unpinned_uses]='uses is not pinned to a 40-character commit SHA'
 	[b5_no_persist_credentials]='the checkout step does not set persist-credentials: false'
+	[b5_no_version_comment]='the pinned action has no version comment'
+	[b5_no_v_version_comment]='the step action comment must name the version'
+	[b5_no_top_permissions]='there is no top-level permissions line'
+	[b5_permissions_empty_with_text]='the permissions line must hold {} alone'
+	[b5_no_workflow_files]='no workflow files in .github/workflows'
 	[b5_name_first_checkout]='.github/workflows/fixture.yml:16: the checkout step does not set persist-credentials: false'
 	[b5_bare_dash_checkout]='.github/workflows/fixture.yml:16: the checkout step does not set persist-credentials: false'
 	[b5_second_step_missing_persist]='.github/workflows/fixture.yml:19: the checkout step does not set persist-credentials: false'
@@ -384,17 +613,34 @@ declare -A expected=(
 	[b5_permissions_write_scope]='the permissions block holds a scope that is not read'
 	[b6_no_risk_json]='.github/risk-paths.json is missing'
 	[b6_no_build_glob]='does not list the glob build.sh'
+	[b6_why_no_category]='build.sh: why names no risk-paths category'
+	[b6_schema_version_2]='must set schema_version 1'
+	[b6_invalid_json]='.github/risk-paths.json is not valid JSON'
+	[b6_empty_paths]='.github/risk-paths.json has no paths entries'
+	[b6_why_too_long]='build.sh: why is more than 200 characters'
 	[b6_caller_main]='uses is not pinned to a 40-character commit SHA'
 	[b6_caller_wrong_workflow]="no workflow calls frostyard/core's risk-paths.yml"
 	[b7_rename_risk_heading]='has no heading that names the risk tier'
 	[b12_no_make_ci]='has no run: make ci step'
+	[b12_no_pull_request]='does not run on pull_request'
+	[b12_ci_missing]='.github/workflows/ci.yml is missing'
 	[b13_no_github_actions]='has no github-actions entry'
+	[b13_dependabot_missing]='.github/dependabot.yml is missing'
 	[b14_no_security_url]='does not link https://github.com/frostyard/omarchy-apps/security'
+	[b14_security_missing]='SECURITY.md is missing'
 	[b15_codeowners]='.github/CODEOWNERS must not exist'
+	[b15_root_codeowners]='CODEOWNERS must not exist'
+	[b15_docs_codeowners]='docs/CODEOWNERS must not exist'
 	[b16_planning_tree]='.planning must not exist'
+	[b16_docs_superpowers]='docs/superpowers must not exist'
+	[b16_cursor_rules]='.cursor/rules must not exist'
+	[b16_gaai_tree]='.gaai must not exist'
+	[b16_yeti_tree]='yeti must not exist'
+	[b16_cairn_tree]='cairn must not exist'
 	[b16_claude_other_file]='.claude/ holds other.md'
 	[b17_duplicate_marker]='must have exactly 1 line'
 	[b17_long_readme]='the limit is 1000'
+	[b17_missing_marker]='must have exactly 1 line'
 )
 
 for id in "${order[@]}"; do

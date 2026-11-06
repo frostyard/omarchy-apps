@@ -246,6 +246,18 @@ risk=$ROOT/.github/risk-paths.json
 jq -e . "$risk" >/dev/null 2>&1 || fail ".github/risk-paths.json is not valid JSON"
 [[ $(jq -r '.schema_version' "$risk") == 1 ]] ||
 	fail ".github/risk-paths.json must set schema_version 1"
+risk_count=$(jq -r '.paths | length' "$risk")
+[[ $risk_count =~ ^[0-9]+$ ]] || fail ".github/risk-paths.json has no valid paths list"
+((risk_count > 0)) || fail ".github/risk-paths.json has no paths entries"
+risk_checked=0
+while IFS=$'\t' read -r glob why; do
+	risk_checked=$((risk_checked + 1))
+	if [[ ! $why =~ ^(boot\ chain|signing\ and\ keys|update\ verification|auth|publication|secrets\ and\ credentials|rulesets\ and\ settings|destructive\ operations|governance): ]]; then
+		fail "$glob: why names no risk-paths category"
+	fi
+	((${#why} <= 200)) || fail "$glob: why is more than 200 characters"
+done < <(jq -r '.paths[] | [.glob, .why] | @tsv' "$risk")
+((risk_checked == risk_count)) || fail ".github/risk-paths.json: checked $risk_checked of $risk_count entries"
 for glob in '.github/risk-paths.json' '.github/workflows/**' 'build.sh' 'plan.sh' 'lib/**' 'apps/**' 'download/**' 'tests/**' 'Makefile' 'mise.toml' 'mise.lock'; do
 	[[ $(jq -r --arg g "$glob" '[.paths[].glob] | index($g) != null' "$risk") == true ]] ||
 		fail ".github/risk-paths.json does not list the glob $glob"
@@ -318,4 +330,4 @@ words=$(wc -w <"$ROOT/README.md")
 words=${words//[[:space:]]/}
 ((words <= 1000)) || fail "README.md has $words words; the limit is 1000"
 
-echo "ok - baseline: ${#workflow_files[@]} workflows, $correction_lines corrections lines, README $words words"
+echo "ok - baseline: ${#workflow_files[@]} workflows, $correction_lines corrections lines, $risk_checked risk-path entries, README $words words"

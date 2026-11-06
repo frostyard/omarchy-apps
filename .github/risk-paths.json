@@ -11,7 +11,7 @@
     },
     {
       "glob": "build.sh",
-      "why": "packages: runs as root in the build container and assembles every .deb that hosts install; an input of every app digest"
+      "why": "publication: runs as root in the build container and assembles every .deb that hosts install; an input of every app digest"
     },
     {
       "glob": "plan.sh",
@@ -19,15 +19,15 @@
     },
     {
       "glob": "lib/**",
-      "why": "packages: the .deb metadata, the Frostyard-Inputs digest and its rules"
+      "why": "publication: the .deb metadata, the Frostyard-Inputs digest and its rules"
     },
     {
       "glob": "apps/**",
-      "why": "packages: the app recipes: what each .deb holds and depends on"
+      "why": "publication: the app recipes: what each .deb holds and depends on"
     },
     {
       "glob": "download/**",
-      "why": "supply chain: the upstream URLs, SHA-256 pins and the verified downloader"
+      "why": "update verification: the upstream URLs, SHA-256 pins and the verified downloader"
     },
     {
       "glob": "tests/**",
