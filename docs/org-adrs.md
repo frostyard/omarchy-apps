@@ -18,6 +18,7 @@ These core ADRs bind `omarchy-apps`. This list records the repository rule that 
 - [ADR-0068 — Label pull requests that touch high-risk paths](https://github.com/frostyard/core/blob/main/docs/adr/0068-label-pull-requests-that-touch-high-risk-paths.md): [`.github/workflows/risk-paths.yml`](../.github/workflows/risk-paths.yml) applies `risk:high` to matching pull requests.
 - [ADR-0071 — Hold every code repository to one baseline](https://github.com/frostyard/core/blob/main/docs/adr/0071-hold-every-code-repository-to-one-baseline.md): this repository carries the baseline guard and its negative tests.
 - [ADR-0072 — Write every README to one standard](https://github.com/frostyard/core/blob/main/docs/adr/0072-write-every-readme-to-one-standard.md): [the root README](../README.md) is the packaging README for this repository.
+- [ADR-0075 — Group Dependabot updates and sync skills once a day](https://github.com/frostyard/core/blob/main/docs/adr/0075-batch-routine-pull-requests.md): each entry of [`.github/dependabot.yml`](../.github/dependabot.yml) has 1 `patterns: ["*"]` group, so Dependabot opens at most 1 version-update PR for each ecosystem and run; security updates stay 1 PR each.
 
 ## Not applicable
 
