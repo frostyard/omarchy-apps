@@ -423,6 +423,36 @@ mut_b6_bad_default_level() {
 	changed "$2" "$1" .github/risk-paths.json
 }
 
+mut_b6_default_level_newline() { # a trailing LF is not part of the level value
+	jq '.default_level = "L3\n"' "$1/.github/risk-paths.json" \
+		>"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+mut_b6_entry_level_newline() { # a trailing LF is not part of the level value
+	jq '.paths[0].level = "L2\n"' "$1/.github/risk-paths.json" \
+		>"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+# Rule C: the caller needs a glob that matches it, not just the list.
+mut_b6_no_caller_glob() {
+	jq '.paths |= map(select(.glob != ".github/workflows/**"))' "$1/.github/risk-paths.json" \
+		>"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+# Rule C: the list needs a glob that matches it (its own entry).
+mut_b6_no_self_entry() {
+	jq '.paths |= map(select(.glob != ".github/risk-paths.json"))' "$1/.github/risk-paths.json" \
+		>"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
 # Rule C: the glob that matches the list itself must be L1 or L2.
 mut_b6_self_glob_l3() {
 	jq '(.paths[] | select(.glob == ".github/risk-paths.json")).level = "L3"' \
@@ -472,8 +502,12 @@ mut_b6_why_too_long() {
 }
 
 # B6 caller: the caller workflow has 1 allowed shape, so each case changes 1
-# part of the shipped file. caller_sha is the pinned core commit.
-caller_sha=c996ea3fb54bcf1a3c621113522213702a7673e2
+# part of the shipped file. The pin is read from that file, so a core pin update
+# does not disarm a case.
+caller_pin() { # caller_pin DIR: the 40-hex core commit in the copied caller
+	sed -nE 's|^    uses: frostyard/core/\.github/workflows/pr-triage\.yml@([0-9a-f]{40}).*|\1|p' \
+		"$1/.github/workflows/risk-paths.yml"
+}
 
 # The pin under another job name: the job key itself is part of the shape.
 mut_b6_caller_other_job() {
@@ -489,13 +523,17 @@ mut_b6_caller_wrong_workflow() {
 
 # A short SHA: the B5 pin scan reports it before B6 reads the body.
 mut_b6_caller_short_sha() {
-	sed -i "s|@$caller_sha|@${caller_sha:0:7}|" "$1/.github/workflows/risk-paths.yml"
+	local sha
+	sha=$(caller_pin "$1")
+	sed -i "s|@$sha|@${sha:0:7}|" "$1/.github/workflows/risk-paths.yml"
 	changed "$2" "$1" .github/workflows/risk-paths.yml
 }
 
 # The unpinned ref: also the B5 pin scan.
 mut_b6_caller_main() {
-	sed -i "s|@$caller_sha|@main|" "$1/.github/workflows/risk-paths.yml"
+	local sha
+	sha=$(caller_pin "$1")
+	sed -i "s|@$sha|@main|" "$1/.github/workflows/risk-paths.yml"
 	changed "$2" "$1" .github/workflows/risk-paths.yml
 }
 
@@ -533,7 +571,9 @@ mut_b6_caller_extra_line() {
 # Valid variants: another 40-character SHA, another trailing comment, and
 # comment lines with a blank line above the body.
 mut_b6_caller_other_sha_comment_ok() {
-	sed -i "s|@$caller_sha # .*|@0000000000000000000000000000000000000000 # frostyard/core, 2026-11-10|" \
+	local sha
+	sha=$(caller_pin "$1")
+	sed -i "s|@$sha # .*|@0000000000000000000000000000000000000000 # frostyard/core, 2026-11-10|" \
 		"$1/.github/workflows/risk-paths.yml"
 	changed "$2" "$1" .github/workflows/risk-paths.yml
 }
@@ -782,6 +822,7 @@ order=(
 	b5_permissions_write_all
 	b5_permissions_write_scope
 	b6_no_risk_json
+	b6_no_self_entry
 	b6_no_build_glob
 	b6_why_no_category
 	b6_list_v1
@@ -789,6 +830,9 @@ order=(
 	b6_bad_default_level
 	b6_self_glob_l3
 	b6_caller_glob_l3
+	b6_default_level_newline
+	b6_entry_level_newline
+	b6_no_caller_glob
 	b6_glob_q_caller_l3
 	b6_glob_deep_list_l3
 	b6_glob_brace_list_l3
@@ -888,6 +932,7 @@ declare -A expected=(
 	[b5_first_step_missing_persist]='.github/workflows/fixture.yml:16: the checkout step does not set persist-credentials: false'
 	[b5_permissions_write_all]='the permissions line must be permissions: {} or a block of read scopes'
 	[b5_permissions_write_scope]='the permissions block holds a scope that is not read'
+	[b6_no_self_entry]='rule C: no glob in the list matches .github/risk-paths.json'
 	[b6_no_risk_json]='.github/risk-paths.json is missing'
 	[b6_no_build_glob]='does not list the glob build.sh'
 	[b6_why_no_category]='build.sh: why names no risk-paths category'
@@ -895,6 +940,9 @@ declare -A expected=(
 	[b6_missing_level]='build.sh: level must be L1, L2, L3 or L4'
 	[b6_bad_default_level]='.github/risk-paths.json must set default_level to L1, L2, L3 or L4'
 	[b6_self_glob_l3]='rule C: the glob .github/risk-paths.json matches .github/risk-paths.json'
+	[b6_default_level_newline]='.github/risk-paths.json must set default_level to L1, L2, L3 or L4'
+	[b6_entry_level_newline]="level must be L1, L2, L3 or L4, not \"L2\n\""
+	[b6_no_caller_glob]='rule C: no glob in the list matches .github/workflows/risk-paths.yml'
 	[b6_caller_glob_l3]='rule C: the glob .github/workflows/** matches .github/workflows/risk-paths.yml'
 	[b6_invalid_json]='.github/risk-paths.json is not valid JSON'
 	[b6_empty_paths]='.github/risk-paths.json has no paths entries'
