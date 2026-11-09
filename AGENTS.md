@@ -14,7 +14,7 @@ This repository builds two Debian packages, `voxtype` and `moonlight-qt`, from p
 - Request values such as `REBUILD`, `PUBLISH`, `TAG` and `INDEX` arrive through `env:`. Do not put dynamic request values inside `run:` text.
 - CI gates run `make ci`: `verify` prerequisite runs `lint` and `test`; `lint` runs shellcheck, actionlint and both baseline checks; `test` runs `bash tests/run.sh` with no network.
 - Every workflow action uses a 40-character commit SHA and a version comment. Workflows use top-level read-only or empty permissions, and every checkout sets `persist-credentials: false`.
-- Files in `.github/risk-paths.json`, `.github/workflows/**`, `build.sh`, `plan.sh`, `lib/**`, `apps/**`, `download/**`, `tests/**`, `Makefile`, `mise.toml`, `mise.lock` are high-risk paths. A PR that matches them needs tier 3 review and the `risk:high` label.
+- Files in `.github/risk-paths.json`, `.github/workflows/**`, `build.sh`, `plan.sh`, `lib/**`, `apps/**`, `download/**`, `tests/**`, `Makefile`, `mise.toml`, `mise.lock` are risk paths, each at a level in the list (core ADR-0078). A PR that matches one gets that level's label (`level:L1` read every line, `level:L2` read the diff, `level:L3` skim, `level:L4` title and CI), and `risk:high` at L1 and L2, which needs tier 3 review. The workflow removes `ready-for-human` when the head moves after the label (core ADR-0077).
 
 ## Gates
 
