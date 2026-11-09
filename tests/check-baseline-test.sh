@@ -701,6 +701,17 @@ mut_b12_ci_dispatch_echo() {
 	changed "$2" "$1" .github/workflows/check-dependencies.yml
 }
 
+# Text in the bot PR body (a block scalar) is not a step: remove the real
+# dispatch and put a run line with the same text inside `body: |`.
+mut_b12_ci_dispatch_in_body() {
+	sed -i -e '/^        run: gh workflow run ci\.yml/d' \
+		-e 's#^\(          body: |\)$#\1\n            run: gh workflow run ci.yml --ref missing#' \
+		"$1/.github/workflows/check-dependencies.yml"
+	grep -q '^            run: gh workflow run ci\.yml --ref missing$' \
+		"$1/.github/workflows/check-dependencies.yml" || return 1
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
 # B13: Dependabot.
 mut_b13_no_github_actions() {
 	sed -i 's/^  - package-ecosystem: "github-actions"$/  - package-ecosystem: "npm"/' \
@@ -889,6 +900,7 @@ order=(
 	b12_no_ci_dispatch
 	b12_ci_dispatch_commented
 	b12_ci_dispatch_echo
+	b12_ci_dispatch_in_body
 	b13_no_github_actions
 	b13_dependabot_missing
 	b14_no_security_url
@@ -1004,6 +1016,7 @@ declare -A expected=(
 	[b12_no_ci_dispatch]='has no run line with gh workflow run ci.yml'
 	[b12_ci_dispatch_commented]='has no run line with gh workflow run ci.yml'
 	[b12_ci_dispatch_echo]='has no run line with gh workflow run ci.yml'
+	[b12_ci_dispatch_in_body]='has no run line with gh workflow run ci.yml'
 	[b13_no_github_actions]='has no github-actions entry'
 	[b13_dependabot_missing]='.github/dependabot.yml is missing'
 	[b14_no_security_url]='does not link https://github.com/frostyard/omarchy-apps/security'
