@@ -675,6 +675,32 @@ mut_b12_ci_missing() {
 	changed "$2" "$1" .github/workflows/ci.yml
 }
 
+# A GITHUB_TOKEN bot PR starts no pull_request run, so ci.yml needs the
+# workflow_dispatch trigger and check-dependencies.yml must dispatch it.
+mut_b12_no_workflow_dispatch() {
+	sed -i '/^  workflow_dispatch:$/d' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b12_no_ci_dispatch() {
+	sed -i '/gh workflow run ci\.yml/d' "$1/.github/workflows/check-dependencies.yml"
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
+# The text in a comment is not a run step.
+mut_b12_ci_dispatch_commented() {
+	sed -i 's|^\([[:space:]]*\)run: gh workflow run ci\.yml|\1# gh workflow run ci.yml|' \
+		"$1/.github/workflows/check-dependencies.yml"
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
+# The text after another command is not a dispatch.
+mut_b12_ci_dispatch_echo() {
+	sed -i 's|^\([[:space:]]*\)run: gh workflow run ci\.yml|\1run: echo gh workflow run ci.yml|' \
+		"$1/.github/workflows/check-dependencies.yml"
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
 # B13: Dependabot.
 mut_b13_no_github_actions() {
 	sed -i 's/^  - package-ecosystem: "github-actions"$/  - package-ecosystem: "npm"/' \
@@ -859,6 +885,10 @@ order=(
 	b12_no_make_ci
 	b12_no_pull_request
 	b12_ci_missing
+	b12_no_workflow_dispatch
+	b12_no_ci_dispatch
+	b12_ci_dispatch_commented
+	b12_ci_dispatch_echo
 	b13_no_github_actions
 	b13_dependabot_missing
 	b14_no_security_url
@@ -970,6 +1000,10 @@ declare -A expected=(
 	[b12_no_make_ci]='has no run: make ci step'
 	[b12_no_pull_request]='does not run on pull_request'
 	[b12_ci_missing]='.github/workflows/ci.yml is missing'
+	[b12_no_workflow_dispatch]='has no workflow_dispatch trigger'
+	[b12_no_ci_dispatch]='has no run line with gh workflow run ci.yml'
+	[b12_ci_dispatch_commented]='has no run line with gh workflow run ci.yml'
+	[b12_ci_dispatch_echo]='has no run line with gh workflow run ci.yml'
 	[b13_no_github_actions]='has no github-actions entry'
 	[b13_dependabot_missing]='.github/dependabot.yml is missing'
 	[b14_no_security_url]='does not link https://github.com/frostyard/omarchy-apps/security'

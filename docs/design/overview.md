@@ -31,7 +31,7 @@ The build workflow validates the release assets, creates a timestamp tag and att
 
 ## Operational notes
 
-Versions use `-frostyard<timestamp>`, so repeated builds of the same upstream version sort newer. Each Monday, `check-dependencies.yml` updates the pinned URL, SHA-256 and version of every app with a newer upstream tag, in 1 PR on the branch `update-upstream-versions`. A bump of 1 app does not change the digest of another app. Because `GITHUB_TOKEN` cannot start `pull_request` workflows for the pull request it opens, the workflow dispatches `build.yml` on the bump branch. CI must build every app before merge.
+Versions use `-frostyard<timestamp>`, so repeated builds of the same upstream version sort newer. Each Monday, `check-dependencies.yml` updates the pinned URL, SHA-256 and version of every app with a newer upstream tag, in 1 PR on the branch `update-upstream-versions`. A bump of 1 app does not change the digest of another app. Because `GITHUB_TOKEN` cannot start `pull_request` workflows for the pull request it opens, the workflow dispatches `build.yml` and `ci.yml` on the bump branch. `ci` is the gate check, so the bump PR must run it too. CI must build every app before merge.
 
 Local builds use Podman and the Debian 13 container:
 

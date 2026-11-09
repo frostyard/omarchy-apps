@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,6 +16,10 @@ defaults:
   run:
     shell: bash
 
+# A GITHUB_TOKEN pull request starts no workflow, so a bot PR (branch
+# update-upstream-versions) gets its checks from the Build run and the ci run
+# that check-dependencies.yml dispatches on that branch. The workflow_dispatch
+# trigger is what lets the ci run start.
 jobs:
   ci:
     runs-on: ubuntu-24.04
