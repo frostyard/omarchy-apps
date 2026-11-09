@@ -1,48 +1,60 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "default_level": "L3",
   "paths": [
     {
       "glob": ".github/risk-paths.json",
+      "level": "L2",
       "why": "governance: the high-risk path list itself"
     },
     {
       "glob": ".github/workflows/**",
+      "level": "L1",
       "why": "publication: the build, release and attestation workflow, the publish-deb request with APT_PUBLISH_TOKEN, the upstream bump bot, CI and the risk-paths caller, plus their token permissions"
     },
     {
       "glob": "build.sh",
+      "level": "L1",
       "why": "publication: runs as root in the build container and assembles every .deb that hosts install; an input of every app digest"
     },
     {
       "glob": "plan.sh",
+      "level": "L1",
       "why": "publication: decides which apps a main run builds and publishes"
     },
     {
       "glob": "lib/**",
+      "level": "L1",
       "why": "publication: the .deb metadata, the Frostyard-Inputs digest and its rules"
     },
     {
       "glob": "apps/**",
+      "level": "L1",
       "why": "publication: the app recipes: what each .deb holds and depends on"
     },
     {
       "glob": "download/**",
+      "level": "L1",
       "why": "update verification: the upstream URLs, SHA-256 pins and the verified downloader"
     },
     {
       "glob": "tests/**",
+      "level": "L2",
       "why": "governance: the tests of the planner, the digest and the package metadata, and the baseline check"
     },
     {
       "glob": "Makefile",
+      "level": "L2",
       "why": "governance: the verify gate"
     },
     {
       "glob": "mise.toml",
+      "level": "L2",
       "why": "governance: the tool pins that CI installs"
     },
     {
       "glob": "mise.lock",
+      "level": "L2",
       "why": "governance: the checksums of the tools that CI installs"
     }
   ]
