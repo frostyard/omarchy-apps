@@ -96,6 +96,18 @@ jobs:
             full matrix is green.
           branch: update-upstream-versions
           delete-branch: true
+          # GitHub starts no pull_request_target run for a PR that
+          # GITHUB_TOKEN opens, so the PR triage caller never labels this PR
+          # (frostyard/core#233). The bot labels it here instead. add-paths
+          # limits the commit to download/checksums.json, so the PR level is
+          # the level of that file in .github/risk-paths.json: L1
+          # (download/**), which also takes risk:high (core
+          # docs/specs/pr-triage.md). tests/check-baseline.sh checks that
+          # these labels match that level.
+          add-paths: download/checksums.json
+          labels: |
+            level:L1
+            risk:high
 
       # GitHub does not start pull_request workflows for a pull request that
       # GITHUB_TOKEN opens or updates: that Build run waits in action_required
