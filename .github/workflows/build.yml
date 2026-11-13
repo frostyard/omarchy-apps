@@ -44,8 +44,8 @@ jobs:
       - name: Run the tests
         run: bash tests/run.sh
 
-  # Which apps this run builds and publishes, from the published index and the
-  # Frostyard-Inputs field of each app's newest published version.
+  # Which apps this run builds and publishes, from the published indexes and
+  # the Frostyard-Inputs field of each app's newest published version.
   plan:
     name: Plan
     runs-on: ubuntu-latest
@@ -59,24 +59,34 @@ jobs:
         with:
           persist-credentials: false
 
-      # The published trixie main amd64 index: the record of what apt serves.
-      # A failed fetch fails the run instead of rebuilding everything.
-      - name: Fetch the published packages index
+      # The published trixie and forky main amd64 indexes: the record of what
+      # apt serves for each codename. apt-publisher publishes the same unmarked
+      # .deb files to both (frostyard/core ADR-0055), so an app that is missing
+      # or stale in 1 index must publish again. A failed fetch fails the run
+      # instead of rebuilding everything.
+      - name: Fetch the published packages indexes
         env:
-          INDEX_URL: https://repository.frostyard.org/debian/dists/trixie/main/binary-amd64/Packages
-          INDEX: ${{ runner.temp }}/Packages
-        run: curl -fsSL --retry 3 --retry-delay 2 --output "$INDEX" "$INDEX_URL"
+          TRIXIE_INDEX_URL: https://repository.frostyard.org/debian/dists/trixie/main/binary-amd64/Packages
+          FORKY_INDEX_URL: https://repository.frostyard.org/debian/dists/forky/main/binary-amd64/Packages
+          TRIXIE_INDEX: ${{ runner.temp }}/Packages-trixie
+          FORKY_INDEX: ${{ runner.temp }}/Packages-forky
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 2 --output "$TRIXIE_INDEX" "$TRIXIE_INDEX_URL"
+          curl -fsSL --retry 3 --retry-delay 2 --output "$FORKY_INDEX" "$FORKY_INDEX_URL"
 
       - name: Decide what to build and publish
         id: decide
         env:
-          INDEX: ${{ runner.temp }}/Packages
+          TRIXIE_INDEX: ${{ runner.temp }}/Packages-trixie
+          FORKY_INDEX: ${{ runner.temp }}/Packages-forky
           REBUILD: ${{ inputs.rebuild }}
           ON_MAIN: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
         run: |
           set -euo pipefail
           # stderr: one decision line per app; the summary table is for the run page.
-          plan=$(bash plan.sh --packages "$INDEX" --rebuild "$REBUILD" --summary "$GITHUB_STEP_SUMMARY")
+          plan=$(bash plan.sh --packages "$TRIXIE_INDEX" --packages "$FORKY_INDEX" \
+            --rebuild "$REBUILD" --summary "$GITHUB_STEP_SUMMARY")
           if [[ $ON_MAIN == true ]]; then
             build=$plan
             publish=$plan
@@ -148,6 +158,53 @@ jobs:
           name: deb-${{ matrix.app }}
           path: dist/*.deb
 
+  # The same .deb files are published to trixie and forky: they carry no ~debNN
+  # marker (frostyard/core ADR-0055), so Debian 14's libraries must satisfy them
+  # as well. This job installs each package in debian:forky and runs the app's
+  # smoke test there; omarchy-apps' registration for forky in apt-publisher's
+  # config/producers.tsv is the compatibility record.
+  smoke-forky:
+    name: Smoke test on Debian Forky (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    needs: [plan, build]
+    # Nothing changed: the matrix is empty, and the release skips with it.
+    if: needs.plan.outputs.build != '[]'
+    container:
+      image: debian:forky
+    # A container job runs steps with sh by default; the steps use bash.
+    defaults:
+      run:
+        shell: bash
+    env:
+      HOME: "/root"
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.build) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deb-${{ matrix.app }}
+          path: ./dist
+
+      - name: Verify package installs and runs on forky
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install --yes ./dist/*.deb
+          smoke=$(bash -c 'source "apps/$APP.sh" >/dev/null 2>&1 || true; echo "$APP_SMOKE"')
+          echo "smoke: $smoke"
+          bash -c "$smoke"
+
   # Publication goes through frostyard/apt-publisher, the single writer of
   # https://repository.frostyard.org/debian/ (frostyard/core ADR-0055). This
   # repository holds no signing key and no bucket credentials: it attaches the
@@ -155,7 +212,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [plan, build]
+    needs: [plan, build, smoke-forky]
     if: github.repository == 'frostyard/omarchy-apps' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.plan.outputs.publish != '[]'
     timeout-minutes: 20
     permissions:
@@ -242,12 +299,15 @@ jobs:
         run: |
           gh release create "$TAG" dist/*.deb --target "$GITHUB_SHA" --latest \
             --title "$TAG" \
-            --notes "Debian 13 (trixie) amd64 build of main at $GITHUB_SHA. frostyard/apt-publisher publishes it to https://repository.frostyard.org/debian/ (trixie)."
+            --notes "Debian 13 (trixie) amd64 build of main at $GITHUB_SHA. frostyard/apt-publisher publishes these unmarked packages to https://repository.frostyard.org/debian/ for trixie and forky."
 
   # Not continue-on-error: if the request fails, nothing was published and
   # the run must fail. Re-running this job alone requests the same release
-  # again. The packages link trixie's libraries and carry no ~debNN marker,
-  # so the request names trixie, the only codename omarchy-apps may use.
+  # again. The packages carry no ~debNN marker, so apt-publisher publishes the
+  # same .deb files to every codename the request names (frostyard/core
+  # ADR-0055): they are built and installed on trixie, installed again on
+  # forky above, and omarchy-apps is registered for both codenames in
+  # apt-publisher's config/producers.tsv.
   request-publication:
     name: Request APT publication
     runs-on: ubuntu-latest
@@ -262,4 +322,4 @@ jobs:
           token: ${{ secrets.APT_PUBLISH_TOKEN }}
           repository: frostyard/apt-publisher
           event-type: publish-deb
-          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ needs.release.outputs.tag }}", "codenames": ["trixie"]}'
+          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ needs.release.outputs.tag }}", "codenames": ["trixie", "forky"]}'

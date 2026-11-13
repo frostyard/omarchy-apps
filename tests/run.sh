@@ -34,6 +34,19 @@ new_index() {
     : >"$PKG"
 }
 
+# An index with a stable name, the way build.yml names them per codename.
+new_named_index() { # new_named_index NAME
+    : >"$WORK/$1"
+    PKG="$WORK/$1"
+}
+
+new_indexes() { # new_indexes: empty Packages-trixie and Packages-forky indexes
+    new_named_index Packages-trixie
+    trixie_index=$PKG
+    new_named_index Packages-forky
+    forky_index=$PKG
+}
+
 # add_stanza PACKAGE VERSION [FROSTYARD_INPUTS]
 add_stanza() {
     {
@@ -238,6 +251,90 @@ fi
 expect_same "--summary appends, it does not overwrite" \
     "$(grep -cF '### Which apps this run publishes' "$WORK/summary.md")" 2
 expect_same "--summary keeps what was there" "$(head -1 "$WORK/summary.md")" '# Job summary'
+
+# --- more than 1 --packages: 1 index per codename ---------------------------
+
+# apt-publisher publishes the same unmarked .deb files to every codename the
+# request names (frostyard/core ADR-0055), so an app must be unchanged in every
+# index to be skipped, and changed in any 1 index to publish.
+V="1.1.1-frostyard20260101000000"
+M="6.2.0-frostyard20260101000000"
+
+# Unchanged in both indexes.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_status "unchanged in both indexes: exit 0" 0
+expect_list "unchanged in both indexes: nothing publishes" '[]'
+expect_decision "unchanged in both indexes: voxtype unchanged" voxtype unchanged
+expect_decision "unchanged in both indexes: moonlight-qt unchanged" moonlight-qt unchanged
+expect_stderr_line "unchanged in both indexes: no index is named" \
+    "voxtype unchanged inputs=$DIG_V newest=$V newest-inputs=$DIG_V changed-in=none"
+
+# Missing in the second index: the newest published version of the other
+# codename says nothing about this one, so the app publishes again.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_list "missing in the second index: the app publishes" '["voxtype"]'
+expect_decision "missing in the second index: voxtype changed" voxtype changed
+expect_decision "missing in the second index: moonlight-qt unchanged" moonlight-qt unchanged
+expect_stderr_line "missing in the second index: the line names the forky index" \
+    "voxtype changed inputs=$DIG_V newest=none newest-inputs=none changed-in=Packages-forky"
+
+# Changed in the first index only.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$OTHER"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_list "changed in the first index only: the app publishes" '["voxtype"]'
+expect_decision "changed in the first index only: voxtype changed" voxtype changed
+expect_decision "changed in the first index only: moonlight-qt unchanged" moonlight-qt unchanged
+expect_stderr_line "changed in the first index only: the line names the trixie index" \
+    "voxtype changed inputs=$DIG_V newest=$V newest-inputs=$OTHER changed-in=Packages-trixie"
+
+# Changed in both indexes: both are named, in the order they were given.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$OTHER"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza voxtype "$V" "$OTHER"
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_list "changed in both indexes: only that app publishes" '["voxtype"]'
+expect_stderr_line "changed in both indexes: both indexes are named" \
+    "voxtype changed inputs=$DIG_V newest=$V newest-inputs=$OTHER changed-in=Packages-trixie,Packages-forky"
+
+# The summary names the index that is changed, 1 row per app.
+printf '# Job summary\n' >"$WORK/summary2.md"
+run_plan --packages "$trixie_index" --packages "$forky_index" --summary "$WORK/summary2.md"
+row="| voxtype | changed | $(code "$DIG_V") | $(code "$V") | $(code "$OTHER") | $(code Packages-trixie,Packages-forky) |"
+if grep -qF -- "$row" "$WORK/summary2.md"; then
+    ok "--summary names the changed index"
+else
+    fail "--summary table lacks the voxtype row: $(cat "$WORK/summary2.md")"
+fi
+expect_same "--summary keeps 1 row per app with 2 indexes" \
+    "$(grep -cF '| voxtype |' "$WORK/summary2.md")" 1
+expect_same "--summary keeps 1 row for the other app too" \
+    "$(grep -cF '| moonlight-qt |' "$WORK/summary2.md")" 1
+
+run_plan --packages "$trixie_index" --packages "$WORK/nosuchindex"
+expect_nonzero "a missing second Packages file fails" "$PLAN_STATUS"
 
 # --- app_inputs --------------------------------------------------------------
 
