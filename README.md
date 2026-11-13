@@ -11,10 +11,12 @@
 
 ## What it publishes
 
-| Package | What it is | Component | Codename |
+| Package | What it is | Component | Codenames |
 | --- | --- | --- | --- |
-| `voxtype` | AI dictation package for a snosi sysext | `main` | `trixie` |
-| `moonlight-qt` | Game-streaming client package for a snosi sysext | `main` | `trixie` |
+| `voxtype` | AI dictation package for a snosi sysext | `main` | `trixie`, `forky` |
+| `moonlight-qt` | Game-streaming client package for a snosi sysext | `main` | `trixie`, `forky` |
+
+One build produces 1 unmarked `.deb`, and the same file goes to both codenames: Debian 13 (`trixie`) and Debian 14 (`forky`). The build installs it in Debian 13, and a second job installs it in Debian 14 and smoke-tests it there before the release.
 
 ## Install
 
@@ -27,13 +29,15 @@ sudo apt update
 sudo apt install voxtype
 ```
 
+On a Debian 14 host, write `forky` in place of `trixie`.
+
 ## Add a package
 
 Add only a package that a snosi image or sysext uses. Core ADR-0066 records this publication boundary; the package and upstream source procedure is in [docs/design/overview.md](docs/design/overview.md#add-an-app).
 
 ## How it works
 
-Pinned upstream versions and SHA-256 hashes live in `download/checksums.json`. A main run compares each package's `Frostyard-Inputs` digest with the published package, attaches changed `.deb` files to a release and asks apt-publisher to publish them. [docs/design/overview.md](docs/design/overview.md) has the build and publication details.
+Pinned upstream versions and SHA-256 hashes live in `download/checksums.json`. A main run compares each package's `Frostyard-Inputs` digest with the published package in each codename's index, attaches changed `.deb` files to a release and asks apt-publisher to publish them to both codenames. [docs/design/overview.md](docs/design/overview.md) has the build and publication details.
 
 ## Develop
 

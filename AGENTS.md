@@ -1,17 +1,19 @@
 # omarchy-apps contributor context
 
-This repository builds two Debian packages, `voxtype` and `moonlight-qt`, from pinned upstream sources. It runs package builds in a `debian:trixie` container and publishes Debian packages only through frostyard/apt-publisher.
+This repository builds two Debian packages, `voxtype` and `moonlight-qt`, from pinned upstream sources. It runs package builds in a `debian:trixie` container and publishes Debian packages only through frostyard/apt-publisher. Each build produces 1 unmarked `.deb`, which is published to Debian 13 `trixie` and to Debian 14 `forky`.
 
 ## Invariants
 
 - The input digest of an app (`lib/inputs.sh`) covers `build.sh`, `lib/deb.sh`, `download/verified-download.sh`, `apps/<app>.sh` and that app's own entry in `download/checksums.json`. A change to 1 of these files rebuilds and republishes every app whose digest it changes on the next `main` run. Change them only when a new package build is the intent, and say so in the PR.
 - A change to `lib/inputs.sh` changes how the digest is made, so every app gets a new digest and is republished. A change to `plan.sh` changes which apps publish. Test both with `bash tests/run.sh`.
-- `build.sh` runs as root in `debian:trixie`; local builds use `podman run --rm -v "$PWD":/src -w /src debian:trixie bash build.sh <app>`. Container steps use `bash`, not `sh` (the build job sets `defaults.run.shell: bash`).
-- `plan.sh` publishes an app only when `Frostyard-Inputs` differs from the app's current input digest. A forced rebuild in `build.yml` can publish one named app. PRs and dispatches outside `main` build every app but publish nothing.
+- `build.sh` runs as root in `debian:trixie`; local builds use `podman run --rm -v "$PWD":/src -w /src debian:trixie bash build.sh <app>`. Container steps use `bash`, not `sh` (the build and `smoke-forky` jobs set `defaults.run.shell: bash`).
+- A package carries no `~debNN` marker, so the same file goes to both codenames (core ADR-0055). Its `Depends` must be satisfiable in Debian 14 as well: the `smoke-forky` job installs each built package in `debian:forky` and runs the app's `APP_SMOKE` there, and the release job waits for it. omarchy-apps' registration for `forky` in apt-publisher's `config/producers.tsv` is the compatibility record. Never add a codename to the publication request without that install passing, and never mark a version with `~debNN` without an ADR.
+- **The smoke test proves that the app starts.** `smoke.sh APP` loads `apps/APP.sh` with errors not ignored, installs `APP_SMOKE_DEPS` when the recipe sets it (`apt-get install --no-install-recommends --yes`), and runs `bash -c "$APP_SMOKE"`. Both the `build` job and the `smoke-forky` job call it after the package is installed, so `APP_SMOKE` must be a command that really runs the program: never `test -x`, never a `||` fallback. `APP_SMOKE_DEPS` names packages the smoke needs but the package must not depend on (`xvfb xauth` for moonlight-qt); a host library that the app links belongs in `APP_EXTRA_DEPENDS` instead. `smoke.sh` is NOT part of an app's input digest: a smoke change re-runs the gate and republishes nothing, so do not add it to `lib/inputs.sh`.
+- `plan.sh` reads 1 Packages index for each codename (`--packages` once per index), and publishes an app when `Frostyard-Inputs` differs from the app's current input digest in any index: no published version in an index, no field, or another digest there is changed. An app is skipped only when every index holds its current digest. A forced rebuild in `build.yml` can publish one named app. PRs and dispatches outside `main` build every app but publish nothing.
 - `download/checksums.json` pins upstream URL, SHA-256 and version. Keep pins exact and rebuild the package through CI.
-- The release job attaches exactly one `amd64` `.deb` per published app to a GitHub release, validates the version and `Frostyard-Inputs`, and creates the main timestamp tag. Publication goes through the `publish-deb` dispatch to `frostyard/apt-publisher`.
+- The release job attaches exactly one `amd64` `.deb` per published app to a GitHub release, validates the version and `Frostyard-Inputs`, and creates the main timestamp tag. Publication goes through the `publish-deb` dispatch to `frostyard/apt-publisher`, which names both codenames, `trixie` and `forky`.
 - This repository holds no signing key and no APT bucket credentials. Never add signing material or publication credentials. apt-publisher keeps the newest 2 versions of each app (core ADR-0067).
-- Request values such as `REBUILD`, `PUBLISH`, `TAG` and `INDEX` arrive through `env:`. Do not put dynamic request values inside `run:` text.
+- Request values such as `REBUILD`, `PUBLISH`, `TAG`, `TRIXIE_INDEX` and `FORKY_INDEX` arrive through `env:`. Do not put dynamic request values inside `run:` text. The codename each index belongs to is in its file name, and `plan.sh` names that file in its summary table.
 - CI gates run `make ci`: `verify` prerequisite runs `lint` and `test`; `lint` runs shellcheck, actionlint and both baseline checks; `test` runs `bash tests/run.sh` with no network.
 - `ci` is the gate check. A `GITHUB_TOKEN` pull request starts no `pull_request` workflow, so `check-dependencies.yml` dispatches `ci.yml` and `build.yml` on the bump branch. Keep the `workflow_dispatch` trigger in `ci.yml`.
 - Every workflow action uses a 40-character commit SHA and a version comment. Workflows use top-level read-only or empty permissions, and every checkout sets `persist-credentials: false`.
@@ -22,5 +24,5 @@ This repository builds two Debian packages, `voxtype` and `moonlight-qt`, from p
 
 - `mise install` installs pinned tools.
 - `make ci` runs the same verification and tests that CI runs.
-- `bash tests/run.sh` tests `plan.sh`, `lib/inputs.sh` and `lib/deb.sh` without network access.
+- `bash tests/run.sh` tests `plan.sh`, `lib/inputs.sh`, `lib/deb.sh` and `smoke.sh` without network access. The smoke cases use fake recipes and a stub `apt-get`.
 - The README checker and `actionlint` must pass before a PR is ready.

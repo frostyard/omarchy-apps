@@ -34,6 +34,19 @@ new_index() {
     : >"$PKG"
 }
 
+# An index with a stable name, the way build.yml names them per codename.
+new_named_index() { # new_named_index NAME
+    : >"$WORK/$1"
+    PKG="$WORK/$1"
+}
+
+new_indexes() { # new_indexes: empty Packages-trixie and Packages-forky indexes
+    new_named_index Packages-trixie
+    trixie_index=$PKG
+    new_named_index Packages-forky
+    forky_index=$PKG
+}
+
 # add_stanza PACKAGE VERSION [FROSTYARD_INPUTS]
 add_stanza() {
     {
@@ -239,6 +252,90 @@ expect_same "--summary appends, it does not overwrite" \
     "$(grep -cF '### Which apps this run publishes' "$WORK/summary.md")" 2
 expect_same "--summary keeps what was there" "$(head -1 "$WORK/summary.md")" '# Job summary'
 
+# --- more than 1 --packages: 1 index per codename ---------------------------
+
+# apt-publisher publishes the same unmarked .deb files to every codename the
+# request names (frostyard/core ADR-0055), so an app must be unchanged in every
+# index to be skipped, and changed in any 1 index to publish.
+V="1.1.1-frostyard20260101000000"
+M="6.2.0-frostyard20260101000000"
+
+# Unchanged in both indexes.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_status "unchanged in both indexes: exit 0" 0
+expect_list "unchanged in both indexes: nothing publishes" '[]'
+expect_decision "unchanged in both indexes: voxtype unchanged" voxtype unchanged
+expect_decision "unchanged in both indexes: moonlight-qt unchanged" moonlight-qt unchanged
+expect_stderr_line "unchanged in both indexes: no index is named" \
+    "voxtype unchanged inputs=$DIG_V newest=$V newest-inputs=$DIG_V changed-in=none"
+
+# Missing in the second index: the newest published version of the other
+# codename says nothing about this one, so the app publishes again.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_list "missing in the second index: the app publishes" '["voxtype"]'
+expect_decision "missing in the second index: voxtype changed" voxtype changed
+expect_decision "missing in the second index: moonlight-qt unchanged" moonlight-qt unchanged
+expect_stderr_line "missing in the second index: the line names the forky index" \
+    "voxtype changed inputs=$DIG_V newest=none newest-inputs=none changed-in=Packages-forky"
+
+# Changed in the first index only.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$OTHER"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza voxtype "$V" "$DIG_V"
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_list "changed in the first index only: the app publishes" '["voxtype"]'
+expect_decision "changed in the first index only: voxtype changed" voxtype changed
+expect_decision "changed in the first index only: moonlight-qt unchanged" moonlight-qt unchanged
+expect_stderr_line "changed in the first index only: the line names the trixie index" \
+    "voxtype changed inputs=$DIG_V newest=$V newest-inputs=$OTHER changed-in=Packages-trixie"
+
+# Changed in both indexes: both are named, in the order they were given.
+new_indexes
+PKG=$trixie_index
+add_stanza voxtype "$V" "$OTHER"
+add_stanza moonlight-qt "$M" "$DIG_M"
+PKG=$forky_index
+add_stanza voxtype "$V" "$OTHER"
+add_stanza moonlight-qt "$M" "$DIG_M"
+run_plan --packages "$trixie_index" --packages "$forky_index"
+expect_list "changed in both indexes: only that app publishes" '["voxtype"]'
+expect_stderr_line "changed in both indexes: both indexes are named" \
+    "voxtype changed inputs=$DIG_V newest=$V newest-inputs=$OTHER changed-in=Packages-trixie,Packages-forky"
+
+# The summary names the index that is changed, 1 row per app.
+printf '# Job summary\n' >"$WORK/summary2.md"
+run_plan --packages "$trixie_index" --packages "$forky_index" --summary "$WORK/summary2.md"
+row="| voxtype | changed | $(code "$DIG_V") | $(code "$V") | $(code "$OTHER") | $(code Packages-trixie,Packages-forky) |"
+if grep -qF -- "$row" "$WORK/summary2.md"; then
+    ok "--summary names the changed index"
+else
+    fail "--summary table lacks the voxtype row: $(cat "$WORK/summary2.md")"
+fi
+expect_same "--summary keeps 1 row per app with 2 indexes" \
+    "$(grep -cF '| voxtype |' "$WORK/summary2.md")" 1
+expect_same "--summary keeps 1 row for the other app too" \
+    "$(grep -cF '| moonlight-qt |' "$WORK/summary2.md")" 1
+
+run_plan --packages "$trixie_index" --packages "$WORK/nosuchindex"
+expect_nonzero "a missing second Packages file fails" "$PLAN_STATUS"
+
 # --- app_inputs --------------------------------------------------------------
 
 copy_repo "$WORK/copy"
@@ -316,6 +413,131 @@ if command -v dpkg-deb >/dev/null && command -v file >/dev/null; then
         "$(dpkg-deb -f "$plain" Frostyard-Inputs)" ""
 else
     echo "skip: the make_deb test needs dpkg-deb and file"
+fi
+
+# --- smoke.sh ----------------------------------------------------------------
+
+# The smoke gate must fail for an app that cannot start. These cases use fake
+# recipes and a stub apt-get in a temporary tree, so they need no network and
+# install nothing (SMOKE_APPS_DIR points smoke.sh at the fake recipes).
+smoke_apps="$WORK/smoke-apps"
+mkdir -p "$smoke_apps"
+cat >"$smoke_apps/good.sh" <<'RECIPE'
+APP_DESC="fake app whose smoke passes"
+APP_SMOKE="true"
+RECIPE
+cat >"$smoke_apps/bad.sh" <<'RECIPE'
+APP_DESC="fake app whose smoke fails"
+APP_SMOKE="false"
+RECIPE
+cat >"$smoke_apps/nosmoke.sh" <<'RECIPE'
+APP_DESC="fake app with no APP_SMOKE"
+RECIPE
+cat >"$smoke_apps/empty.sh" <<'RECIPE'
+APP_DESC="fake app with an empty APP_SMOKE"
+APP_SMOKE=""
+RECIPE
+cat >"$smoke_apps/broken.sh" <<'RECIPE'
+APP_DESC="fake app whose recipe fails to load"
+# The old CI smoke swallowed this with `|| true` and passed on an empty command.
+return 1
+RECIPE
+cat >"$smoke_apps/deps.sh" <<'RECIPE'
+APP_DESC="fake app whose smoke needs test-only packages"
+APP_SMOKE="true"
+APP_SMOKE_DEPS="xvfb xauth"
+RECIPE
+
+stub_bin="$WORK/stub-bin"
+mkdir -p "$stub_bin"
+cat >"$stub_bin/apt-get" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$SMOKE_APT_LOG"
+STUB
+chmod 0755 "$stub_bin/apt-get"
+
+run_smoke() { # run_smoke APP [APPS_DIR]
+    SMOKE_STATUS=0
+    : >"$WORK/smoke-apt.log"
+    PATH="$stub_bin:$PATH" \
+        SMOKE_APPS_DIR="${2:-$smoke_apps}" \
+        SMOKE_APT_LOG="$WORK/smoke-apt.log" \
+        bash "$SRCDIR/smoke.sh" "$1" >"$WORK/smoke-out" 2>"$WORK/smoke-err" ||
+        SMOKE_STATUS=$?
+}
+
+expect_smoke_status() { # expect_smoke_status WHAT WANT_STATUS
+    if [[ "$SMOKE_STATUS" == "$2" ]]; then
+        ok "smoke: $1"
+    else
+        fail "smoke: $1: exit $SMOKE_STATUS, want $2 ($(tr '\n' ';' <"$WORK/smoke-err"))"
+    fi
+}
+
+run_smoke good
+if [[ "$SMOKE_STATUS" == 0 ]]; then ok "smoke: a passing APP_SMOKE passes"; else fail "smoke: a passing APP_SMOKE exited $SMOKE_STATUS"; fi
+if grep -qF "bash -c 'true'" "$WORK/smoke-out"; then
+    ok "smoke: prints the command it runs"
+else
+    fail "smoke: does not print the command it runs: $(cat "$WORK/smoke-out")"
+fi
+if [[ -s "$WORK/smoke-apt.log" ]]; then
+    fail "smoke: ran apt-get with no APP_SMOKE_DEPS: $(cat "$WORK/smoke-apt.log")"
+else
+    ok "smoke: no APP_SMOKE_DEPS, so no apt-get runs (the caller installs the package)"
+fi
+
+run_smoke bad
+expect_smoke_status "a failing APP_SMOKE fails" 1
+
+run_smoke nosmoke
+expect_smoke_status "a recipe with no APP_SMOKE fails" 1
+if grep -qF 'no APP_SMOKE' "$WORK/smoke-err"; then
+    ok "smoke: the missing APP_SMOKE is named"
+else
+    fail "smoke: the error does not name the missing APP_SMOKE: $(cat "$WORK/smoke-err")"
+fi
+
+run_smoke empty
+expect_smoke_status "a recipe with an empty APP_SMOKE fails" 1
+
+run_smoke broken
+expect_smoke_status "a recipe that fails to load fails" 1
+if grep -qF 'cannot load' "$WORK/smoke-err"; then
+    ok "smoke: the recipe that fails to load is named"
+else
+    fail "smoke: the error does not name the recipe that failed to load: $(cat "$WORK/smoke-err")"
+fi
+
+run_smoke nosuchapp
+expect_smoke_status "an unknown app fails" 1
+
+run_smoke deps
+expect_smoke_status "APP_SMOKE_DEPS passes when apt-get succeeds" 0
+expect_same "smoke: installs exactly the APP_SMOKE_DEPS packages" \
+    "$(cat "$WORK/smoke-apt.log")" "install --no-install-recommends --yes xvfb xauth"
+
+# Every real recipe must carry a smoke test, and it must not be the old
+# pass-through form (a fallback that succeeds for a binary that never ran).
+for recipe in "$SRCDIR"/apps/*.sh; do
+    name=${recipe##*/}
+    name=${name%.sh}
+    line=$(bash -c 'set -euo pipefail; source "$1"; printf "%s" "${APP_SMOKE:-}"' _ "$recipe")
+    if [[ -z "$line" ]]; then
+        fail "apps/$name.sh sets no APP_SMOKE"
+    elif [[ "$line" == *'||'* || "$line" == *'test -x'* ]]; then
+        fail "apps/$name.sh has a fallback smoke command: $line"
+    else
+        ok "apps/$name.sh smokes a real start: $line"
+    fi
+done
+
+# The smoke runner is not an input of any app: changing it must not republish
+# a package. lib/inputs.sh lists the files it covers.
+if grep -qF 'smoke.sh' "$SRCDIR/lib/inputs.sh"; then
+    fail "lib/inputs.sh covers smoke.sh, so a smoke change republishes every app"
+else
+    ok "smoke.sh is not part of the input digest"
 fi
 
 # --- result ------------------------------------------------------------------

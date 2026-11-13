@@ -31,6 +31,17 @@ bash plan.sh --packages Packages
 
 It prints one JSON array of apps to publish. It writes one decision line per app to stderr: `unchanged`, `changed` or `forced`. The command needs `jq` and `dpkg`; it needs no network.
 
+## Smoke-test a built package
+
+`smoke.sh APP` runs the recipe's `APP_SMOKE` against an installed package. It installs `APP_SMOKE_DEPS` itself, so run it as root in a container with the `.deb` already installed:
+
+```sh
+podman run --rm -v "$PWD":/src:Z -w /src debian:forky bash -c \
+  'apt-get update && apt-get install --yes ./dist/*.deb && bash smoke.sh moonlight-qt'
+```
+
+Add `SMOKE_APPS_DIR=/path` to run a recipe from another directory.
+
 ## Run the gates
 
 Run the same credential-free gate as CI:
