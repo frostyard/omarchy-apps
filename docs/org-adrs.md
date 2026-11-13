@@ -4,7 +4,7 @@ These core ADRs bind `omarchy-apps`. This list records the repository rule that 
 
 ## Decisions this repository follows
 
-- [ADR-0018 — Org-wide agent instruction and knowledge surfaces](https://github.com/frostyard/core/blob/main/docs/adr/0018-org-wide-agent-instruction-and-knowledge-surfaces.md): [`AGENTS.md`](../AGENTS.md) is canonical. The four aliases are relative symlinks to it. Blocking corrections add one line to [`.memory/corrections.jsonl`](../.memory/corrections.jsonl).
+- [ADR-0018 — Org-wide agent instruction and knowledge surfaces](https://github.com/frostyard/core/blob/main/docs/adr/0018-org-wide-agent-instruction-and-knowledge-surfaces.md): [`AGENTS.md`](../AGENTS.md) is canonical. The four aliases are relative symlinks to it. Blocking corrections add one record file under `.memory/corrections/` ([`.memory/README.md`](../.memory/README.md)).
 - [ADR-0019 — Repository governance as machine-readable policy with risk tiers](https://github.com/frostyard/core/blob/main/docs/adr/0019-governance-as-code-and-risk-tiers.md): [`.github/risk-paths.json`](../.github/risk-paths.json) identifies high-risk package and publication paths. [`.github/pull_request_template.md`](../.github/pull_request_template.md) requires a risk tier.
 - [ADR-0021 — SHA-pinned actions and least-privilege CI workflows](https://github.com/frostyard/core/blob/main/docs/adr/0021-sha-pinned-actions-and-least-privilege-ci.md): workflows pin actions to commit SHAs, use least privilege and disable checkout credential persistence.
 - [ADR-0025 — One docs/ tree per repository, in core's four-category shape](https://github.com/frostyard/core/blob/main/docs/adr/0025-consolidate-repository-docs-into-docs.md): repository documentation lives in the [`docs/`](README.md) tree and starts from category templates.
@@ -19,6 +19,7 @@ These core ADRs bind `omarchy-apps`. This list records the repository rule that 
 - [ADR-0071 — Hold every code repository to one baseline](https://github.com/frostyard/core/blob/main/docs/adr/0071-hold-every-code-repository-to-one-baseline.md): this repository carries the baseline guard and its negative tests.
 - [ADR-0072 — Write every README to one standard](https://github.com/frostyard/core/blob/main/docs/adr/0072-write-every-readme-to-one-standard.md): [the root README](../README.md) is the packaging README for this repository.
 - [ADR-0075 — Group Dependabot updates and sync skills once a day](https://github.com/frostyard/core/blob/main/docs/adr/0075-batch-routine-pull-requests.md): each entry of [`.github/dependabot.yml`](../.github/dependabot.yml) has 1 `patterns: ["*"]` group, so Dependabot opens at most 1 version-update PR for each ecosystem and run; security updates stay 1 PR each.
+- [ADR-0081 — Store each correction in a file of its own](https://github.com/frostyard/core/blob/main/docs/adr/0081-store-each-correction-in-a-file-of-its-own.md): amends ADR-0018 and ADR-0071 in part. Each correction record is 1 file in [`.memory/corrections/`](../.memory/README.md), in canonical form; a record is never removed or renamed.
 
 ## Not applicable
 

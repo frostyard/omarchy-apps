@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "smoke tests",
+  "correction": "A smoke test must run the installed program: the gate loaded the recipe with `|| true` and then ran an empty command, and voxtype's `|| voxtype --help || test -x` passed for a binary that never started, so a broken package could publish.",
+  "evidence": "frostyard/omarchy-apps#19 review: the published moonlight-qt 6.2.0 package had no Depends and its binary failed with libX11.so.6 (exit 127) on bare trixie and forky, while the CI smoke passed.",
+  "promoted_to": "smoke.sh, apps/*.sh, .github/workflows/build.yml, tests/run.sh and AGENTS.md"
+}
