@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": ".github/risk-paths.json",
+  "correction": "Each why in the risk-path list starts with a category from core's risk-paths spec section B; the core validator checks only length, so tests/check-baseline.sh checks the category.",
+  "evidence": "Cross-review of PR #13 at fcb81a2: packages and supply chain were used as categories.",
+  "promoted_to": "tests/check-baseline.sh"
+}
