@@ -29,7 +29,9 @@ A pull request or a dispatch outside `main` builds every app. It does not publis
 
 The build container has a debian:trixie base and installs build dependencies with `apt-get`. These values are not part of the input digest. Runtime `Depends` come from `dpkg-shlibdeps`, plus per-app extras for libraries that the app loads with dlopen. Libraries that the app only probes at run time are deliberately NOT dependencies. The voxtype package uses the upstream AVX2 binary and sets an x86-64-v3 CPU floor, matching the Omarchy Arch package.
 
-The build workflow validates the release assets, creates a timestamp tag and attaches exactly one `amd64` `.deb` for each published app. The `build` job installs that package in `debian:trixie` and runs the app's `APP_SMOKE`; the `smoke-forky` job installs the same artifact in `debian:forky` and runs the same smoke test there. The release needs both. The run then sends a `publish-deb` dispatch to frostyard/apt-publisher with codenames `trixie` and `forky`, and apt-publisher publishes the same unmarked file to each one. This repository has no signing key or APT bucket credential. apt-publisher keeps the newest 2 versions of each app. Older versions leave the index as new versions arrive; pool files stay.
+`moonlight-qt` repacks the upstream AppImage, and the payload is not self-contained: its ELF files link the host's X11, OpenGL, VA-API, font and Kerberos libraries, and `dpkg-shlibdeps` yields no `Depends` for them (the published 6.2.0 package carried none). The recipe therefore names 15 of them in `APP_EXTRA_DEPENDS`: `libx11-6`, `libva2`, `libva-x11-2`, `libva-drm2`, `libgl1`, `libegl1`, `libdrm2`, `libfontconfig1`, `libopengl0`, `libharfbuzz0b`, `libfreetype6`, `libcom-err2`, `libgpg-error0`, `libsm6` and `libice6`. Every name exists in trixie and in forky. The payload bundles only the `xcb` Qt platform plugin, so the app also needs a running X server even for `--version`. `apps/moonlight-qt.sh` is part of the app's input digest, so this change gives `moonlight-qt` a new `Frostyard-Inputs`: the next `main` run republishes it to both codenames with the new `Depends`. `voxtype`'s smoke command changed as well, so it republishes in the same run.
+
+The build workflow validates the release assets, creates a timestamp tag and attaches exactly one `amd64` `.deb` for each published app. The `build` job installs that package in `debian:trixie` and runs `bash smoke.sh APP`; the `smoke-forky` job installs the same artifact in `debian:forky` and runs the same command there. `smoke.sh` loads the recipe with errors not ignored, fails when `APP_SMOKE` is missing or empty, installs the recipe's `APP_SMOKE_DEPS` (test-only packages such as `xvfb` and `xauth`) and runs `bash -c "$APP_SMOKE"`. `moonlight-qt` smokes `xvfb-run -a moonlight-qt --version` and `voxtype` smokes `voxtype --version`, so both gates fail for a package whose program cannot start. `smoke.sh` is not part of any input digest: a smoke change republishes nothing. The release needs both jobs. The run then sends a `publish-deb` dispatch to frostyard/apt-publisher with codenames `trixie` and `forky`, and apt-publisher publishes the same unmarked file to each one. This repository has no signing key or APT bucket credential. apt-publisher keeps the newest 2 versions of each app. Older versions leave the index as new versions arrive; pool files stay.
 
 ## Operational notes
 
@@ -41,12 +43,19 @@ Local builds use Podman and the Debian 13 container:
 podman run --rm -v "$PWD":/src -w /src debian:trixie bash build.sh voxtype
 ```
 
-The package output is in `dist/`.
+The package output is in `dist/`. Run the smoke test against the installed package the same way CI does:
+
+```sh
+podman run --rm -v "$PWD":/src:Z -w /src debian:trixie bash -c \
+  'apt-get update && apt-get install --yes ./dist/*.deb && bash smoke.sh moonlight-qt'
+```
+
+Use `debian:forky` for the second codename.
 
 ## Add an app
 
 1. Confirm that a snosi image or sysext uses the package. Core ADR-0066 limits the maintained build set to these packages.
-2. Add `apps/<name>.sh` with `APP_DESC`, `APP_EXTRA_DEPENDS`, `APP_SMOKE`, `app_deps()` and `app_build()`. The header of `build.sh` describes these fields and functions.
+2. Add `apps/<name>.sh` with `APP_DESC`, `APP_EXTRA_DEPENDS`, `APP_SMOKE`, the optional `APP_SMOKE_DEPS`, `app_deps()` and `app_build()`. `APP_SMOKE` must run the installed program and exit non-zero when it cannot start. The header of `build.sh` describes these fields and functions, and `smoke.sh` runs the smoke test.
 3. Add the upstream pin with `url`, `sha256` and `version` to `download/checksums.json`.
 4. Add the upstream repository to the `REPOS` map in `.github/workflows/check-dependencies.yml`.
 5. Add the package name to the omarchy-apps entry in frostyard/apt-publisher `config/producers.tsv`, or apt-publisher refuses the release. Merge that apt-publisher pull request first.

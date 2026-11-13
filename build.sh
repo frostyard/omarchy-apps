@@ -7,11 +7,20 @@
 # Each app lives in apps/<name>.sh and defines:
 #   APP_DESC           one-line package description
 #   APP_EXTRA_DEPENDS  comma-separated Depends beyond dpkg-shlibdeps output
-#                      (dlopen'd libs, QML module plugins, runtime tools)
-#   APP_SMOKE          command run against the installed package in CI
+#                      (dlopen'd libs, QML module plugins, runtime tools, the
+#                      host libraries that a repacked AppImage payload links)
+#   APP_SMOKE          command run against the installed package in CI; it
+#                      must prove that the app really starts (smoke.sh exits
+#                      non-zero when it is missing or fails)
+#   APP_SMOKE_DEPS     optional, space-separated packages the smoke needs but
+#                      the package must not depend on (xvfb, xauth); smoke.sh
+#                      installs them before APP_SMOKE
 #   app_deps()         apt-get install of build dependencies
 #   app_build()        fetch via verified_download, build, and stage into
 #                      $STAGE (rootfs-shaped: usr/bin, ...)
+#
+# The smoke test runs from smoke.sh (not part of any app's input digest):
+#   bash smoke.sh <app>
 #
 # Output: dist/<name>_<version>-frostyard<stamp>_<arch>.deb
 # (override location with DIST=/path).

@@ -415,6 +415,131 @@ else
     echo "skip: the make_deb test needs dpkg-deb and file"
 fi
 
+# --- smoke.sh ----------------------------------------------------------------
+
+# The smoke gate must fail for an app that cannot start. These cases use fake
+# recipes and a stub apt-get in a temporary tree, so they need no network and
+# install nothing (SMOKE_APPS_DIR points smoke.sh at the fake recipes).
+smoke_apps="$WORK/smoke-apps"
+mkdir -p "$smoke_apps"
+cat >"$smoke_apps/good.sh" <<'RECIPE'
+APP_DESC="fake app whose smoke passes"
+APP_SMOKE="true"
+RECIPE
+cat >"$smoke_apps/bad.sh" <<'RECIPE'
+APP_DESC="fake app whose smoke fails"
+APP_SMOKE="false"
+RECIPE
+cat >"$smoke_apps/nosmoke.sh" <<'RECIPE'
+APP_DESC="fake app with no APP_SMOKE"
+RECIPE
+cat >"$smoke_apps/empty.sh" <<'RECIPE'
+APP_DESC="fake app with an empty APP_SMOKE"
+APP_SMOKE=""
+RECIPE
+cat >"$smoke_apps/broken.sh" <<'RECIPE'
+APP_DESC="fake app whose recipe fails to load"
+# The old CI smoke swallowed this with `|| true` and passed on an empty command.
+return 1
+RECIPE
+cat >"$smoke_apps/deps.sh" <<'RECIPE'
+APP_DESC="fake app whose smoke needs test-only packages"
+APP_SMOKE="true"
+APP_SMOKE_DEPS="xvfb xauth"
+RECIPE
+
+stub_bin="$WORK/stub-bin"
+mkdir -p "$stub_bin"
+cat >"$stub_bin/apt-get" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$SMOKE_APT_LOG"
+STUB
+chmod 0755 "$stub_bin/apt-get"
+
+run_smoke() { # run_smoke APP [APPS_DIR]
+    SMOKE_STATUS=0
+    : >"$WORK/smoke-apt.log"
+    PATH="$stub_bin:$PATH" \
+        SMOKE_APPS_DIR="${2:-$smoke_apps}" \
+        SMOKE_APT_LOG="$WORK/smoke-apt.log" \
+        bash "$SRCDIR/smoke.sh" "$1" >"$WORK/smoke-out" 2>"$WORK/smoke-err" ||
+        SMOKE_STATUS=$?
+}
+
+expect_smoke_status() { # expect_smoke_status WHAT WANT_STATUS
+    if [[ "$SMOKE_STATUS" == "$2" ]]; then
+        ok "smoke: $1"
+    else
+        fail "smoke: $1: exit $SMOKE_STATUS, want $2 ($(tr '\n' ';' <"$WORK/smoke-err"))"
+    fi
+}
+
+run_smoke good
+if [[ "$SMOKE_STATUS" == 0 ]]; then ok "smoke: a passing APP_SMOKE passes"; else fail "smoke: a passing APP_SMOKE exited $SMOKE_STATUS"; fi
+if grep -qF "bash -c 'true'" "$WORK/smoke-out"; then
+    ok "smoke: prints the command it runs"
+else
+    fail "smoke: does not print the command it runs: $(cat "$WORK/smoke-out")"
+fi
+if [[ -s "$WORK/smoke-apt.log" ]]; then
+    fail "smoke: ran apt-get with no APP_SMOKE_DEPS: $(cat "$WORK/smoke-apt.log")"
+else
+    ok "smoke: no APP_SMOKE_DEPS, so no apt-get runs (the caller installs the package)"
+fi
+
+run_smoke bad
+expect_smoke_status "a failing APP_SMOKE fails" 1
+
+run_smoke nosmoke
+expect_smoke_status "a recipe with no APP_SMOKE fails" 1
+if grep -qF 'no APP_SMOKE' "$WORK/smoke-err"; then
+    ok "smoke: the missing APP_SMOKE is named"
+else
+    fail "smoke: the error does not name the missing APP_SMOKE: $(cat "$WORK/smoke-err")"
+fi
+
+run_smoke empty
+expect_smoke_status "a recipe with an empty APP_SMOKE fails" 1
+
+run_smoke broken
+expect_smoke_status "a recipe that fails to load fails" 1
+if grep -qF 'cannot load' "$WORK/smoke-err"; then
+    ok "smoke: the recipe that fails to load is named"
+else
+    fail "smoke: the error does not name the recipe that failed to load: $(cat "$WORK/smoke-err")"
+fi
+
+run_smoke nosuchapp
+expect_smoke_status "an unknown app fails" 1
+
+run_smoke deps
+expect_smoke_status "APP_SMOKE_DEPS passes when apt-get succeeds" 0
+expect_same "smoke: installs exactly the APP_SMOKE_DEPS packages" \
+    "$(cat "$WORK/smoke-apt.log")" "install --no-install-recommends --yes xvfb xauth"
+
+# Every real recipe must carry a smoke test, and it must not be the old
+# pass-through form (a fallback that succeeds for a binary that never ran).
+for recipe in "$SRCDIR"/apps/*.sh; do
+    name=${recipe##*/}
+    name=${name%.sh}
+    line=$(bash -c 'set -euo pipefail; source "$1"; printf "%s" "${APP_SMOKE:-}"' _ "$recipe")
+    if [[ -z "$line" ]]; then
+        fail "apps/$name.sh sets no APP_SMOKE"
+    elif [[ "$line" == *'||'* || "$line" == *'test -x'* ]]; then
+        fail "apps/$name.sh has a fallback smoke command: $line"
+    else
+        ok "apps/$name.sh smokes a real start: $line"
+    fi
+done
+
+# The smoke runner is not an input of any app: changing it must not republish
+# a package. lib/inputs.sh lists the files it covers.
+if grep -qF 'smoke.sh' "$SRCDIR/lib/inputs.sh"; then
+    fail "lib/inputs.sh covers smoke.sh, so a smoke change republishes every app"
+else
+    ok "smoke.sh is not part of the input digest"
+fi
+
 # --- result ------------------------------------------------------------------
 
 if ((failures > 0)); then

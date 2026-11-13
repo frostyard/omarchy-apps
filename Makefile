@@ -10,7 +10,7 @@ check: verify ## Developer gate
 ci: verify ## CI gate
 
 lint: ## shellcheck, actionlint and both baseline checks
-	shellcheck build.sh plan.sh lib/*.sh apps/*.sh download/*.sh tests/*.sh
+	shellcheck build.sh plan.sh smoke.sh lib/*.sh apps/*.sh download/*.sh tests/*.sh
 	actionlint
 	tests/check-baseline.sh
 	tests/check-baseline-test.sh

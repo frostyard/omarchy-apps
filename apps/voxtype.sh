@@ -4,7 +4,9 @@
 # omarchy AUR package accepts).
 APP_DESC="AI voice dictation for Wayland (prebuilt upstream binary, AVX2)"
 APP_EXTRA_DEPENDS=""
-APP_SMOKE="voxtype --version || voxtype --help || test -x /usr/bin/voxtype"
+# A real start, with no fallback: `|| voxtype --help || test -x ...` passed
+# for a binary that could not run at all.
+APP_SMOKE="voxtype --version"
 # libasound2t64 must be PRESENT at build time so dpkg-shlibdeps can map the
 # prebuilt binary's alsa linkage into Depends (shlibdeps resolves against
 # installed libraries; without it the deb shipped with no Depends at all --
