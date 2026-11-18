@@ -1069,7 +1069,22 @@ mut_b17_sections() {
 }
 
 mut_b17_section_order() {
-	readme_replace "$1" "$2" '## Install' '## What it publishes again'
+	python3 - "$1/README.md" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+for heading in ("\n## Develop\n", "\n## Where to go next\n", "\n## Add a package\n"):
+    assert text.count(heading) == 1, f"expected 1 occurrence of {heading!r}"
+start = text.index("\n## Develop\n")
+end = text.index("\n## Where to go next\n", start)
+develop = text[start:end]
+text = text[:start] + text[end:]
+insert = text.index("\n## Add a package\n")
+path.write_text(text[:insert] + develop + text[insert:])
+PY
+	changed "$2" "$1" README.md
 }
 
 mut_b17_deep_heading() {
@@ -1114,6 +1129,12 @@ mut_b17_checker_changed() {
 
 mut_b17_checker_missing() {
 	rm "$1/tests/lib/check-readme.mjs"
+	changed "$2" "$1" tests/lib/check-readme.mjs
+}
+
+mut_b17_checker_symlink() {
+	mv "$1/tests/lib/check-readme.mjs" "$1/tests/lib/check-readme-original.mjs"
+	ln -s check-readme-original.mjs "$1/tests/lib/check-readme.mjs"
 	changed "$2" "$1" tests/lib/check-readme.mjs
 }
 
@@ -1289,6 +1310,7 @@ order=(
 	b17_tree
 	b17_checker_changed
 	b17_checker_missing
+	b17_checker_symlink
 	b17_1001_words
 )
 
@@ -1435,25 +1457,26 @@ declare -A expected=(
 	[b16_cairn_tree]='cairn must not exist'
 	[b16_claude_other_file]='.claude/ holds other.md'
 	[b17_duplicate_marker]='must have exactly 1 line'
-	[b17_long_readme]='FAIL R11'
+	[b17_long_readme]='FAIL R11 the README has '
 	[b17_missing_marker]='must have exactly 1 line'
-	[b17_mixed_markers]='FAIL R1'
-	[b17_title]='FAIL R2'
-	[b17_no_lead]='FAIL R3'
-	[b17_status]='FAIL R4'
-	[b17_documentation]='FAIL R5'
-	[b17_badge_source]='FAIL R6'
-	[b17_sections]='FAIL R7'
-	[b17_section_order]='FAIL R7'
-	[b17_deep_heading]='FAIL R8'
-	[b17_make_line]='FAIL R9'
-	[b17_footer_link]='FAIL R10'
+	[b17_mixed_markers]='FAIL R1 expected exactly 1'
+	[b17_title]='FAIL R2 expected exactly 1 level-1 heading'
+	[b17_no_lead]='FAIL R3 the top block has no lead paragraph'
+	[b17_status]='FAIL R4 line '
+	[b17_documentation]='FAIL R5 line '
+	[b17_badge_source]='FAIL R6 line '
+	[b17_sections]='FAIL R7 line '
+	[b17_section_order]='FAIL R7 "Develop" must be the second-to-last section and appear once'
+	[b17_deep_heading]='FAIL R8 line '
+	[b17_make_line]='FAIL R9 the Develop section'
+	[b17_footer_link]='FAIL R10 the Where to go next section'
 	[b17_emoji]='FAIL R12 emoji'
 	[b17_private_address_in_code]='FAIL R12 private IPv4 address'
 	[b17_dates]='FAIL R12 there are 3 dates'
 	[b17_tree]='tree drawing (├──, └──)'
 	[b17_checker_changed]='differs from the pinned core checker'
 	[b17_checker_missing]='tests/lib/check-readme.mjs must be a regular file'
+	[b17_checker_symlink]='not ok - tests/lib/check-readme.mjs must be a regular file (vendored from core)'
 	[b17_1001_words]='FAIL R11 the README has 1001 words (at most 1000)'
 )
 
@@ -1492,6 +1515,34 @@ run_readme_invocation_case() {
 }
 
 run_readme_invocation_case
+
+# Supply only the baseline's other commands: no system directory on PATH can
+# accidentally supply Node. Keep the copied tree and links under the harness's
+# guarded work directory, with the existing EXIT trap responsible for cleanup.
+run_readme_no_node_case() {
+	local dir=$work/readme-no-node bin=$work/readme-no-node-bin err status tool
+	local want='not ok - node is not on PATH (mise install)'
+	cases=$((cases + 1))
+	copy_tree "$dir"
+	mkdir -p "$bin"
+	for tool in awk basename bash dirname find grep jq paste python3 readlink realpath sha256sum sort; do
+		ln -s "$(command -v "$tool")" "$bin/$tool"
+	done
+	if err=$(PATH="$bin" "$dir/tests/check-baseline.sh" 2>&1 >/dev/null); then
+		status=0
+	else
+		status=$?
+	fi
+	if [[ $status == 1 && $err == "$want" ]]; then
+		printf 'ok %d - b17_no_node_on_path\n' "$cases"
+	else
+		printf 'not ok %d - b17_no_node_on_path: exit %s, expected exit 1 and "%s"\n' "$cases" "$status" "$want"
+		printf '  %s\n' "${err//$'\n'/$'\n'  }"
+		failures=$((failures + 1))
+	fi
+}
+
+run_readme_no_node_case
 
 # The guard against a work directory inside the repository, tested on a
 # scratch copy so the real repository is never the tree under test. The inner
