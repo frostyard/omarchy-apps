@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write  # lets the job dispatch Build and ci on the bump branch
+      actions: write  # lets the job dispatch PR triage, Build and ci
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,8 +97,8 @@ jobs:
           branch: update-upstream-versions
           delete-branch: true
           # GitHub starts no pull_request_target run for a PR that
-          # GITHUB_TOKEN opens, so the PR triage caller never labels this PR
-          # (frostyard/core#233). The bot labels it here instead. add-paths
+          # GITHUB_TOKEN opens (frostyard/core#233). Seed the labels here;
+          # the dispatch below also runs PR triage (core ADR-0087). add-paths
           # limits the commit to download/checksums.json, so the PR level is
           # the level of that file in .github/risk-paths.json: L1
           # (download/**), which also takes risk:high (core
@@ -108,6 +108,13 @@ jobs:
           labels: |
             level:L1
             risk:high
+
+      - name: Run PR triage
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh workflow run pr-triage-dispatch.yml --repo "$GITHUB_REPOSITORY" -f pr="$PR_NUMBER"
 
       # GitHub does not start pull_request workflows for a pull request that
       # GITHUB_TOKEN opens or updates: that Build run waits in action_required
