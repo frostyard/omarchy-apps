@@ -1,8 +1,8 @@
 {
   "voxtype": {
-    "url": "https://github.com/peteonrails/voxtype/releases/download/v1.1.1/voxtype-1.1.1-linux-x86_64-avx2",
-    "sha256": "3462262980e5a75391ffdeb7d3b63f9f638d6261df042f04f9119dfb7aab7770",
-    "version": "1.1.1"
+    "url": "https://github.com/peteonrails/voxtype/releases/download/v1.2.2/voxtype-1.2.2-linux-x86_64-avx2",
+    "sha256": "9ec4ad5862253a3a3dd4a458cd88b15332fc23b6765b5a991a6590525c4f8485",
+    "version": "1.2.2"
   },
   "moonlight-qt": {
     "url": "https://github.com/moonlight-stream/moonlight-qt/releases/download/v6.2.0/Moonlight-6.2.0-x86_64.AppImage",
