@@ -7,6 +7,12 @@
 set -euo pipefail
 
 ROOT=$(realpath "$(cd "$(dirname "$0")/.." && pwd)")
+readme_only=0
+case ${1-} in
+'') (($# == 0)) || { printf 'usage: %s [--readme]\n' "$0" >&2; exit 2; } ;;
+--readme) (($# == 1)) || { printf 'usage: %s [--readme]\n' "$0" >&2; exit 2; }; readme_only=1 ;;
+*) printf 'usage: %s [--readme]\n' "$0" >&2; exit 2 ;;
+esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 # The harness copies the tree into its work directory, so a work directory
@@ -1006,6 +1012,137 @@ mut_b17_missing_marker() {
 	changed "$2" "$1" README.md
 }
 
+# Exercise core's rules through the shell gate, not an imported copy of them.
+# Each replacement must match exactly once, so README drift cannot disarm a case.
+readme_replace() { # readme_replace DIR ORIG OLD NEW
+	python3 - "$1/README.md" "$3" "$4" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+old, new = sys.argv[2:]
+assert text.count(old) == 1, f"expected 1 occurrence of {old!r}"
+path.write_text(text.replace(old, new))
+PY
+	changed "$2" "$1" README.md
+}
+
+mut_b17_mixed_markers() {
+	printf '<!-- readme-kind: tool -->\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_title() {
+	printf '\n# Another title\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_no_lead() {
+	python3 - "$1/README.md" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text().splitlines(keepends=True)
+lead = [line for line in lines if line.startswith("`omarchy-apps` builds ")]
+assert len(lead) == 1
+path.write_text("".join(line for line in lines if line not in lead))
+PY
+	changed "$2" "$1" README.md
+}
+
+mut_b17_status() {
+	readme_replace "$1" "$2" '**Status:** in production.' '**Status:** experimental.'
+}
+
+mut_b17_documentation() {
+	readme_replace "$1" "$2" '**Documentation:** [docs/README.md](docs/README.md)' '**Documentation:** docs/README.md'
+}
+
+mut_b17_badge_source() {
+	readme_replace "$1" "$2" 'https://github.com/frostyard/omarchy-apps/actions/workflows/ci.yml/badge.svg' 'https://example.org/badge.svg'
+}
+
+mut_b17_sections() {
+	readme_replace "$1" "$2" '## What it publishes' '## Packages'
+}
+
+mut_b17_section_order() {
+	readme_replace "$1" "$2" '## Install' '## What it publishes again'
+}
+
+mut_b17_deep_heading() {
+	printf '\n### Details\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_make_line() {
+	readme_replace "$1" "$2" 'make ci' 'echo ci'
+}
+
+mut_b17_footer_link() {
+	readme_replace "$1" "$2" '- [SECURITY.md](SECURITY.md): report a vulnerability privately.' '- SECURITY.md: report a vulnerability privately.'
+}
+
+mut_b17_emoji() {
+	printf '\n😀\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_private_address_in_code() {
+	# shellcheck disable=SC2016 # Markdown fences are literal.
+	printf '\n```sh\ncurl http://192.168.1.2/\n```\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_dates() {
+	printf '\n2026-01-01 2026-01-02 2026-01-03\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_tree() {
+	# shellcheck disable=SC2016 # Markdown fences are literal.
+	printf '\n```text\n└── example\n```\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
+mut_b17_checker_changed() {
+	printf '\n// changed\n' >>"$1/tests/lib/check-readme.mjs"
+	changed "$2" "$1" tests/lib/check-readme.mjs
+}
+
+mut_b17_checker_missing() {
+	rm "$1/tests/lib/check-readme.mjs"
+	changed "$2" "$1" tests/lib/check-readme.mjs
+}
+
+# R11's boundary is computed from the fixture, not from today's README size.
+b17_word_count() { # b17_word_count DIR ORIG WORDS
+	python3 - "$1/README.md" "$3" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+count = int(sys.argv[2]) - len(text.split())
+assert count > 0
+path.write_text(text + "\n" + " ".join(["word"] * count) + "\n")
+PY
+	changed "$2" "$1" README.md
+}
+
+mut_b17_1000_words_ok() { b17_word_count "$1" "$2" 1000; }
+mut_b17_1001_words() { b17_word_count "$1" "$2" 1001; }
+
+# A nested heading, dates and make text inside a fence are not prose.
+# Copyright, registered and trademark symbols are R12's explicit exceptions.
+mut_b17_fenced_content_ok() {
+	# shellcheck disable=SC2016 # Markdown fences are literal.
+	printf '\n```text\n### Not a heading\n2026-01-01 2026-01-02 2026-01-03\n```\n© ® ™\n' >>"$1/README.md"
+	changed "$2" "$1" README.md
+}
+
 order=(
 	unmutated
 	b1_remove_gemini
@@ -1135,10 +1272,30 @@ order=(
 	b17_duplicate_marker
 	b17_long_readme
 	b17_missing_marker
+	b17_mixed_markers
+	b17_title
+	b17_no_lead
+	b17_status
+	b17_documentation
+	b17_badge_source
+	b17_sections
+	b17_section_order
+	b17_deep_heading
+	b17_make_line
+	b17_footer_link
+	b17_emoji
+	b17_private_address_in_code
+	b17_dates
+	b17_tree
+	b17_checker_changed
+	b17_checker_missing
+	b17_1001_words
 )
 
 # Cases that mutate the tree and must pass.
 ok_order=(
+	b17_1000_words_ok
+	b17_fenced_content_ok
 	b2_only_gitkeep_ok
 	b2_year_0100_ok
 	b2_unicode_record_ok
@@ -1278,17 +1435,63 @@ declare -A expected=(
 	[b16_cairn_tree]='cairn must not exist'
 	[b16_claude_other_file]='.claude/ holds other.md'
 	[b17_duplicate_marker]='must have exactly 1 line'
-	[b17_long_readme]='the limit is 1000'
+	[b17_long_readme]='FAIL R11'
 	[b17_missing_marker]='must have exactly 1 line'
+	[b17_mixed_markers]='FAIL R1'
+	[b17_title]='FAIL R2'
+	[b17_no_lead]='FAIL R3'
+	[b17_status]='FAIL R4'
+	[b17_documentation]='FAIL R5'
+	[b17_badge_source]='FAIL R6'
+	[b17_sections]='FAIL R7'
+	[b17_section_order]='FAIL R7'
+	[b17_deep_heading]='FAIL R8'
+	[b17_make_line]='FAIL R9'
+	[b17_footer_link]='FAIL R10'
+	[b17_emoji]='FAIL R12 emoji'
+	[b17_private_address_in_code]='FAIL R12 private IPv4 address'
+	[b17_dates]='FAIL R12 there are 3 dates'
+	[b17_tree]='tree drawing (├──, └──)'
+	[b17_checker_changed]='differs from the pinned core checker'
+	[b17_checker_missing]='tests/lib/check-readme.mjs must be a regular file'
+	[b17_1001_words]='FAIL R11 the README has 1001 words (at most 1000)'
 )
 
 for id in "${order[@]}"; do
+	if ((readme_only)) && [[ $id != unmutated && $id != b17_* ]]; then continue; fi
 	run_case "$id" "${expected[$id]-}"
 done
 
 for id in "${ok_order[@]}"; do
+	if ((readme_only)) && [[ $id != b17_* ]]; then continue; fi
 	run_ok_case "$id"
 done
+
+# Prove that the gate invokes Node with the vendored file and the copied root,
+# even from another working directory, and propagates a child process failure.
+run_readme_invocation_case() {
+	local dir=$work/readme-invocation stub=$work/readme-bin out=$work/readme.out status
+	cases=$((cases + 1))
+	copy_tree "$dir"
+	mkdir -p "$stub"
+	# shellcheck disable=SC2016 # The stub expands its own arguments and log path.
+	printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$@" >"$README_INVOCATION_LOG"' \
+		'printf "README invocation sentinel\n"' 'exit 23' >"$stub/node"
+	chmod +x "$stub/node"
+	if (cd "$work" && PATH="$stub:$PATH" README_INVOCATION_LOG="$work/readme.args" \
+		"$dir/tests/check-baseline.sh") >"$out" 2>&1; then status=0; else status=$?; fi
+	if ((status != 0)) && [[ -f $work/readme.args ]] &&
+		[[ $(<"$work/readme.args") == "$dir/tests/lib/check-readme.mjs"$'\n'"$dir" ]] &&
+		grep -qF 'README invocation sentinel' "$out" &&
+		grep -qF 'the README check failed' "$out"; then
+		printf 'ok %d - b17_checker_invocation_and_failure\n' "$cases"
+	else
+		printf 'not ok %d - b17_checker_invocation_and_failure: exit %s or unexpected invocation/output\n' "$cases" "$status"
+		failures=$((failures + 1))
+	fi
+}
+
+run_readme_invocation_case
 
 # The guard against a work directory inside the repository, tested on a
 # scratch copy so the real repository is never the tree under test. The inner
@@ -1370,9 +1573,10 @@ run_matcher_cases() {
 	printf 'ok %d - matcher_direct_cases (%d rows)\n' "$cases" $((${#rows[@]} / 3))
 }
 
-run_matcher_cases
-
-run_tmpdir_guard
+if ((!readme_only)); then
+	run_matcher_cases
+	run_tmpdir_guard
+fi
 
 printf '1..%d\n' "$cases"
 if ((failures > 0)); then
