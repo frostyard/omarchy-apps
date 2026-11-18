@@ -978,13 +978,24 @@ if [[ -d $ROOT/.claude ]]; then
 	done < <(find "$ROOT/.claude" -mindepth 1 -maxdepth 1)
 fi
 
-# B17: the README follows core's README spec: 1 kind marker, at most 1000
-# words (core ADR-0072).
+# B17: run R1 to R12 of core's README spec (core ADR-0072) unchanged.
+# Source: frostyard/core@b40d872d20084527849242a8bcc6b074cd5333a9:
+# .agents/skills/frostyard-readme/scripts/check-readme.mjs
+# Copy updates from core and update the hash; never edit the vendored checker.
+readme_checker=$ROOT/tests/lib/check-readme.mjs
+[[ -f $readme_checker && ! -L $readme_checker ]] ||
+	fail "tests/lib/check-readme.mjs must be a regular file (vendored from core)"
+readme_hash=$(sha256sum "$readme_checker")
+[[ ${readme_hash%% *} == 543c494db6aa638b9413f1ad8f02d0f47c353ee60b7a9fcfa91cfd2a177ef72f ]] ||
+	fail "tests/lib/check-readme.mjs differs from the pinned core checker; copy it from core, never edit by hand"
+command -v node >/dev/null 2>&1 || fail "node is not on PATH (mise install)"
+# Keep this repository's packaging kind in addition to core's kind validation.
 marker=$(grep -cxF -- '<!-- readme-kind: packaging -->' "$ROOT/README.md" || true)
 [[ $marker == 1 ]] ||
 	fail "README.md must have exactly 1 line <!-- readme-kind: packaging -->; found $marker"
-words=$(wc -w <"$ROOT/README.md")
-words=${words//[[:space:]]/}
-((words <= 1000)) || fail "README.md has $words words; the limit is 1000"
+if ! readme_result=$(node "$readme_checker" "$ROOT" 2>&1); then
+	printf '%s\n' "$readme_result" >&2
+	fail "the README check failed; see the line above"
+fi
 
-echo "ok - baseline: ${#workflow_files[@]} workflows, $correction_records corrections records, $risk_count risk-path entries, ${#caller_body[@]} caller lines, bot labels level:$bot_pr_level, README $words words"
+echo "ok - baseline: ${#workflow_files[@]} workflows, $correction_records corrections records, $risk_count risk-path entries, ${#caller_body[@]} caller lines, bot labels level:$bot_pr_level, $readme_result"

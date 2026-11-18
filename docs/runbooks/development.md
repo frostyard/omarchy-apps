@@ -8,7 +8,8 @@ Use this procedure to build one package, inspect a publication plan and run the 
 mise install
 ```
 
-The pinned tools are shellcheck, actionlint and jq.
+The pinned tools are shellcheck, actionlint, jq and Node.js. Node.js runs the
+vendored README checker; it needs no package dependencies.
 
 ## Build locally
 
@@ -58,8 +59,20 @@ Run the package tests directly when needed:
 bash tests/run.sh
 ```
 
-The README checker runs from a checkout of frostyard/core at `origin/main`:
+The baseline gate checks the packaging marker and runs the unchanged core
+README checker for rules R1 to R12 of the
+[README spec](https://github.com/frostyard/core/blob/main/docs/specs/readme.md)
+(baseline B17, core ADR-0072). Run it or its focused gate tests directly:
 
 ```sh
-node <core checkout>/.agents/skills/frostyard-readme/scripts/check-readme.mjs .
+node tests/lib/check-readme.mjs .
+bash tests/check-baseline-test.sh --readme
 ```
+
+`tests/lib/check-readme.mjs` is copied from
+[`frostyard/core@b40d872d20084527849242a8bcc6b074cd5333a9`](https://github.com/frostyard/core/blob/b40d872d20084527849242a8bcc6b074cd5333a9/.agents/skills/frostyard-readme/scripts/check-readme.mjs).
+`tests/check-baseline.sh` verifies its SHA-256 before invoking Node.js, and
+`make ci` runs that gate and its negative tests. Never edit the copy by hand:
+copy an update from core and update the source revision and hash together.
+The focused tests cover each rule, the 1000-word boundary, the copy's integrity
+and invocation failure propagation. The checker and its tests use no network.
