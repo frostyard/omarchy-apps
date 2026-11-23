@@ -369,7 +369,10 @@ mut_b4_no_mise_toml() {
 
 # B5: pinned, least-privilege workflows.
 mut_b5_unpinned_uses() {
-	sed -i 's|@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1|@v4|' "$1/.github/workflows/ci.yml"
+	local sha
+	sha=$(action_pin "$1" .github/workflows/ci.yml actions/checkout) || return 1
+	[[ -n $sha ]] || return 1
+	sed -i -E "s|actions/checkout@$sha([[:space:]]+#.*)?|actions/checkout@v4|" "$1/.github/workflows/ci.yml"
 	changed "$2" "$1" .github/workflows/ci.yml
 }
 
@@ -379,12 +382,18 @@ mut_b5_no_persist_credentials() {
 }
 
 mut_b5_no_version_comment() {
-	sed -i 's| # v7\.0\.1||' "$1/.github/workflows/ci.yml"
+	local sha
+	sha=$(action_pin "$1" .github/workflows/ci.yml actions/checkout) || return 1
+	[[ -n $sha ]] || return 1
+	sed -i -E "s|(@$sha)[[:space:]]+#.*$|\\1|" "$1/.github/workflows/ci.yml"
 	changed "$2" "$1" .github/workflows/ci.yml
 }
 
 mut_b5_no_v_version_comment() {
-	sed -i 's| # v7\.0\.1| # checkout-7|' "$1/.github/workflows/ci.yml"
+	local sha
+	sha=$(action_pin "$1" .github/workflows/ci.yml actions/checkout) || return 1
+	[[ -n $sha ]] || return 1
+	sed -i -E "s|(@$sha)[[:space:]]+#.*$|\\1 # checkout-7|" "$1/.github/workflows/ci.yml"
 	changed "$2" "$1" .github/workflows/ci.yml
 }
 
@@ -443,6 +452,70 @@ mut_b5_permissions_write_all() {
 mut_b5_permissions_write_scope() {
 	sed -i 's/^  contents: read$/  contents: write/' "$1/.github/workflows/ci.yml"
 	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_major_only_comment() {
+	sed -i '0,/uses: actions\/checkout@/{ /uses: actions\/checkout@/s/ #.*$/ # v7/; }' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_branch_comment() {
+	sed -i '0,/uses: actions\/checkout@/{ /uses: actions\/checkout@/s/ #.*$/ # main/; }' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_two_shas() {
+	sed -i -E '0,/uses: actions\/checkout@/s|actions/checkout@.*$|actions/checkout@0123456789abcdef0123456789abcdef01234567 # v7.0.2|' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b5_core_pin_no_comment() {
+	local sha
+	sha=$(caller_pin "$1")
+	[[ -n $sha ]] || return 1
+	sed -i -E "s|(@$sha)[[:space:]]+#.*$|\\1|" "$1/.github/workflows/risk-paths.yml"
+	changed "$2" "$1" .github/workflows/risk-paths.yml
+}
+
+b5_action_metadata() { # b5_action_metadata DIR ACTION COMMENT
+	mkdir -p "$1/.github/actions/fixture"
+	printf 'name: fixture\ndescription: Pin check fixture\nruns:\n  using: composite\n  steps:\n    - uses: %s@0123456789abcdef0123456789abcdef01234567 # %s\n' "$2" "$3" \
+		>"$1/.github/actions/fixture/action.yml"
+}
+
+mut_b5_action_metadata_major_only() {
+	b5_action_metadata "$1" example-org/example-action v1
+	changed "$2" "$1" .github/actions/fixture/action.yml
+}
+
+mut_b5_action_metadata_two_shas() {
+	b5_action_metadata "$1" actions/checkout v7.0.2
+	changed "$2" "$1" .github/actions/fixture/action.yml
+}
+
+mut_b5_action_metadata_ok() {
+	b5_action_metadata "$1" example-org/example-action v1.2.3
+	changed "$2" "$1" .github/actions/fixture/action.yml
+}
+
+b5_bump_checkout() { # b5_bump_checkout DIR ORIG VERSION
+	local f any=1
+	for f in "$1"/.github/workflows/*.yml "$1"/.github/workflows/*.yaml; do
+		[[ -f $f ]] || continue
+		sed -i -E "s|actions/checkout@[0-9a-f]{40}[[:space:]]+#.*$|actions/checkout@0123456789abcdef0123456789abcdef01234567 # $3|" "$f"
+		if changed "$2" "$1" "${f#"$1/"}"; then
+			any=0
+		fi
+	done
+	return "$any"
+}
+
+mut_b5_bump_checkout_ok() {
+	b5_bump_checkout "$1" "$2" v7.0.2
+}
+
+mut_b5_two_part_comment_ok() {
+	b5_bump_checkout "$1" "$2" v7.0
 }
 
 # B6: the risk paths and their caller.
@@ -575,6 +648,14 @@ caller_pin() { # caller_pin DIR: the 40-hex core commit in the copied caller
 		"$1/.github/workflows/risk-paths.yml"
 }
 
+action_pin() { # action_pin DIR FILE ACTION: the 40-hex SHA of the first `uses: ACTION@` line of FILE in the copy
+	local action sha
+	action=$(printf '%s' "$3" | sed 's|[./]|\\&|g')
+	sha=$(sed -nE "s/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+$action@([0-9a-f]{40})([[:space:]].*)?$/\\2/p" "$1/$2" | head -n 1)
+	[[ -n $sha ]] || return 1
+	printf '%s\n' "$sha"
+}
+
 # The pin under another job name: the job key itself is part of the shape.
 mut_b6_caller_other_job() {
 	sed -i 's/^  pr-triage:$/  other:/' "$1/.github/workflows/risk-paths.yml"
@@ -639,8 +720,9 @@ mut_b6_caller_extra_line() {
 mut_b6_caller_other_sha_comment_ok() {
 	local sha
 	sha=$(caller_pin "$1")
-	sed -i "s|@$sha # .*|@0000000000000000000000000000000000000000 # frostyard/core, 2026-11-10|" \
-		"$1/.github/workflows/risk-paths.yml"
+	# Keep both callers of the same reusable workflow on 1 SHA.
+	sed -i "s|pr-triage\\.yml@$sha # .*|pr-triage.yml@0123456789abcdef0123456789abcdef01234567 # frostyard/core, 2026-11-10|" \
+		"$1/.github/workflows/risk-paths.yml" "$1/.github/workflows/pr-triage-dispatch.yml"
 	changed "$2" "$1" .github/workflows/risk-paths.yml
 }
 
@@ -1220,6 +1302,12 @@ order=(
 	b5_first_step_missing_persist
 	b5_permissions_write_all
 	b5_permissions_write_scope
+	b5_major_only_comment
+	b5_branch_comment
+	b5_two_shas
+	b5_core_pin_no_comment
+	b5_action_metadata_major_only
+	b5_action_metadata_two_shas
 	b6_no_risk_json
 	b6_no_self_entry
 	b6_no_build_glob
@@ -1316,6 +1404,9 @@ order=(
 
 # Cases that mutate the tree and must pass.
 ok_order=(
+	b5_bump_checkout_ok
+	b5_two_part_comment_ok
+	b5_action_metadata_ok
 	b17_1000_words_ok
 	b17_fenced_content_ok
 	b2_only_gitkeep_ok
@@ -1332,6 +1423,12 @@ ok_order=(
 )
 
 declare -A expected=(
+	[b5_major_only_comment]='the pin comment must be # vX.Y.Z or # vX.Y'
+	[b5_branch_comment]='the pin comment must be # vX.Y.Z or # vX.Y'
+	[b5_two_shas]='actions/checkout has more than 1 SHA across the workflows and actions'
+	[b5_core_pin_no_comment]='the pinned action has no version comment'
+	[b5_action_metadata_major_only]='.github/actions/fixture/action.yml:6: the pin comment must be # vX.Y.Z or # vX.Y'
+	[b5_action_metadata_two_shas]='actions/checkout has more than 1 SHA across the workflows and actions'
 	[b1_remove_gemini]='GEMINI.md must be a symlink to AGENTS.md'
 	[b1_absolute_cursorrules]='.cursorrules must be a relative symlink'
 	[b1_regular_claude]='CLAUDE.md must be a symlink to AGENTS.md'
@@ -1376,7 +1473,7 @@ declare -A expected=(
 	[b5_unpinned_uses]='uses is not pinned to a 40-character commit SHA'
 	[b5_no_persist_credentials]='the checkout step does not set persist-credentials: false'
 	[b5_no_version_comment]='the pinned action has no version comment'
-	[b5_no_v_version_comment]='the step action comment must name the version'
+	[b5_no_v_version_comment]='the pin comment must be # vX.Y.Z or # vX.Y'
 	[b5_no_top_permissions]='there is no top-level permissions line'
 	[b5_permissions_empty_with_text]='the permissions line must hold {} alone'
 	[b5_no_workflow_files]='no workflow files in .github/workflows'
