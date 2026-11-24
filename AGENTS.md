@@ -21,6 +21,46 @@ This repository builds two Debian packages, `voxtype` and `moonlight-qt`, from p
 - Before the owner reports a bump PR for review, its body gets a `## Risk paths` section. The bot's body only lists the updates, and `download/checksums.json` is an L1 risk path whose PR body must say why the change is safe. The owner adds the section under the bot's text (the bot rewrites the body only when it pushes a new head) and names: the matched path and its rule (`download/**`); the scope (which apps' pins move, from which version to which, and which asset variant); the upstream release, and each security advisory it fixes; the checksum evidence (each new URL downloaded and hashed, and the sum equal to the pin and to the asset digest on the upstream release); and CI at the head (`ci`, each app's build and the `debian:forky` smoke tests, read from the head commit's check runs, because the dispatched runs do not show in the PR's checks). No test can read a PR body before review, so this rule is the guard (the same review point blocked frostyard/bootc-debian#37).
 - Files in `.github/risk-paths.json`, `.github/workflows/**`, `build.sh`, `plan.sh`, `lib/**`, `apps/**`, `download/**`, `tests/**`, `Makefile`, `mise.toml`, `mise.lock` are risk paths, each at a level in the list (core ADR-0078). A PR that matches one gets that level's label (`level:L1` read every line, `level:L2` read the diff, `level:L3` skim, `level:L4` title and CI), and `risk:high` at L1 and L2, which needs tier 3 review. A core org floor can raise the computed level above the entry's level, and a stricter level label that the PR already has stays (the ratchet); only the author lowers it, with the reason in the PR. The workflow removes `ready-for-human` when the head moves after the label (core ADR-0077).
 
+## Releases and dependencies
+
+- Tag format: `main-<UTC timestamp YYYYMMDDHHMMSS>-<7-character commit SHA>`,
+  for example `main-20261124013331-f1f84f6`. The `Check the packages` step of
+  the `Release` job in [`build.yml`](.github/workflows/build.yml) computes it.
+- How a release starts: automatically. Every push to `main` runs `Build`;
+  `plan.sh` compares each app's input digest with the `Frostyard-Inputs` field
+  in the published `trixie` and `forky` indexes, and the `Release` job creates
+  the GitHub release and its tag only when 1 or more apps changed. The
+  `Request APT publication` job then sends `publish-deb` to
+  frostyard/apt-publisher. A dispatch of `Build` on `main` with the `rebuild`
+  input forces 1 named app.
+- Who tags: the `Build` workflow, never a person by hand. Agents never tag,
+  push tags, create a release, or dispatch `Build` on `main`; merging a PR
+  that changes an input digest is what publishes (see Invariants).
+- Version rule: the repository has no version of its own. A package version
+  is the upstream version pinned in
+  [`download/checksums.json`](download/checksums.json) plus
+  `-frostyard<build timestamp>` ([`lib/deb.sh`](lib/deb.sh)). No release
+  check is needed: a change on `main` to an input of an app digest
+  (`lib/inputs.sh`) is released by the same run.
+- Dependencies:
+  - Upstream pins: the URL, SHA-256 and version of each app in
+    [`download/checksums.json`](download/checksums.json). The weekly
+    [`check-dependencies.yml`](.github/workflows/check-dependencies.yml) opens
+    the bump PR.
+  - Internal: frostyard/core's reusable workflow
+    `.github/workflows/pr-triage.yml`, pinned to a commit in
+    [`risk-paths.yml`](.github/workflows/risk-paths.yml) and
+    [`pr-triage-dispatch.yml`](.github/workflows/pr-triage-dispatch.yml); and
+    frostyard/apt-publisher, which the release reaches by the `publish-deb`
+    dispatch (not pinned) and which lists omarchy-apps for `trixie` and
+    `forky` in its `config/producers.tsv`.
+  - Tools and actions: the tool pins in `mise.toml` and `mise.lock`; the
+    action SHAs in `.github/workflows/`, which Dependabot bumps monthly
+    ([`dependabot.yml`](.github/dependabot.yml)).
+- Who uses this repository: frostyard/snosi installs `voxtype` and
+  `moonlight-qt` from the Frostyard APT repository in its `voxtype` and
+  `moonlight` sysexts.
+
 ## Gates
 
 - `mise install` installs pinned tools.
