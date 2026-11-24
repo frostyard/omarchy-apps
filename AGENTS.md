@@ -20,6 +20,46 @@ This repository builds two Debian packages, `voxtype` and `moonlight-qt`, from p
 - The bump PR sets its own level labels. A PR that `GITHUB_TOKEN` opens starts no `pull_request_target` run, so the triage caller never labels it (frostyard/core#233); `check-dependencies.yml` sets them in the `create-pull-request` step instead: `add-paths` limits the commit to `download/checksums.json`, and `labels` names the level of that file plus `risk:high` at L1 and L2. `tests/check-baseline.sh` checks the labels against the level that `.github/risk-paths.json` gives the add-paths, so a list change that moves that level must change them too.
 - Files in `.github/risk-paths.json`, `.github/workflows/**`, `build.sh`, `plan.sh`, `lib/**`, `apps/**`, `download/**`, `tests/**`, `Makefile`, `mise.toml`, `mise.lock` are risk paths, each at a level in the list (core ADR-0078). A PR that matches one gets that level's label (`level:L1` read every line, `level:L2` read the diff, `level:L3` skim, `level:L4` title and CI), and `risk:high` at L1 and L2, which needs tier 3 review. A core org floor can raise the computed level above the entry's level, and a stricter level label that the PR already has stays (the ratchet); only the author lowers it, with the reason in the PR. The workflow removes `ready-for-human` when the head moves after the label (core ADR-0077).
 
+## Releases and dependencies
+
+- Tag format: `main-<UTC timestamp YYYYMMDDHHMMSS>-<7-character commit SHA>`,
+  for example `main-20261124013331-f1f84f6`. The `Check the packages` step of
+  the `Release` job in [`build.yml`](.github/workflows/build.yml) computes it.
+- How a release starts: automatically. Every push to `main` runs `Build`;
+  `plan.sh` compares each app's input digest with the `Frostyard-Inputs` field
+  in the published `trixie` and `forky` indexes, and the `Release` job creates
+  the GitHub release and its tag only when 1 or more apps changed. The
+  `Request APT publication` job then sends `publish-deb` to
+  frostyard/apt-publisher. A dispatch of `Build` on `main` with the `rebuild`
+  input forces 1 named app.
+- Who tags: the `Build` workflow, never a person by hand. Agents never tag,
+  push tags, create a release, or dispatch `Build` on `main`; merging a PR
+  that changes an input digest is what publishes (see Invariants).
+- Version rule: the repository has no version of its own. A package version
+  is the upstream version pinned in
+  [`download/checksums.json`](download/checksums.json) plus
+  `-frostyard<build timestamp>` ([`lib/deb.sh`](lib/deb.sh)). No release
+  check is needed: a change on `main` to an input of an app digest
+  (`lib/inputs.sh`) is released by the same run.
+- Dependencies:
+  - Upstream pins: the URL, SHA-256 and version of each app in
+    [`download/checksums.json`](download/checksums.json). The weekly
+    [`check-dependencies.yml`](.github/workflows/check-dependencies.yml) opens
+    the bump PR.
+  - Internal: frostyard/core's reusable workflow
+    `.github/workflows/pr-triage.yml`, pinned to a commit in
+    [`risk-paths.yml`](.github/workflows/risk-paths.yml) and
+    [`pr-triage-dispatch.yml`](.github/workflows/pr-triage-dispatch.yml); and
+    frostyard/apt-publisher, which the release reaches by the `publish-deb`
+    dispatch (not pinned) and which lists omarchy-apps for `trixie` and
+    `forky` in its `config/producers.tsv`.
+  - Tools and actions: the tool pins in `mise.toml` and `mise.lock`; the
+    action SHAs in `.github/workflows/`, which Dependabot bumps monthly
+    ([`dependabot.yml`](.github/dependabot.yml)).
+- Who uses this repository: frostyard/snosi installs `voxtype` and
+  `moonlight-qt` from the Frostyard APT repository in its `voxtype` and
+  `moonlight` sysexts.
+
 ## Gates
 
 - `mise install` installs pinned tools.
