@@ -64,4 +64,4 @@ Use `debian:forky` for the second codename.
 ## References
 
 - Rationale: [ADR-0066](https://github.com/frostyard/core/blob/main/docs/adr/0066-build-only-the-omarchy-apps-packages-that-snosi-uses.md), [ADR-0067](https://github.com/frostyard/core/blob/main/docs/adr/0067-publish-omarchy-apps-on-change-and-keep-the-newest-two.md)
-- Publication: [ADR-0055](https://github.com/frostyard/core/blob/main/docs/adr/0055-publish-debian-packages-through-the-apt-publisher.md), [ADR-0060](https://github.com/frostyard/core/blob/main/docs/adr/0060-publish-omarchy-apps-through-the-apt-publisher.md)
+- Publication: [ADR-0055](https://github.com/frostyard/core/blob/main/docs/adr/0055-publish-debian-packages-through-the-apt-publisher.md), [ADR-0060](https://github.com/frostyard/core/blob/main/docs/adr/0060-publish-omarchy-apps-through-the-apt-publisher.md), [ADR-0082](https://github.com/frostyard/core/blob/main/docs/adr/0082-verify-the-build-provenance-of-omarchy-apps.md)
